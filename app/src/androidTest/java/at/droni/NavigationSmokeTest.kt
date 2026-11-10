@@ -2,6 +2,7 @@ package at.droni
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,7 +31,13 @@ class NavigationSmokeTest {
         home()
         ui.onNodeWithText("Draw path").performClick()
         ui.onNodeWithText("Simulate path").assertIsNotEnabled()
+        ui.onNodeWithContentDescription("Route drawing canvas").performTouchInput {
+            swipe(Offset(width * .18f, height * .72f), Offset(width * .78f, height * .28f), 600)
+        }
+        ui.onNodeWithText("Simulate path").assertIsEnabled()
         screenshot("03-path")
+        ui.onNodeWithText("Clear drawing").performScrollTo().performClick()
+        ui.onNodeWithText("Simulate path").assertIsNotEnabled()
         home()
         ui.onNodeWithText("Recordings").performClick()
         ui.waitUntil(10_000) { ui.onAllNodesWithText("Your next memory starts here").fetchSemanticsNodes().isNotEmpty() }

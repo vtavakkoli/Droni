@@ -138,6 +138,7 @@ internal fun FlightDeck(
     Box(Modifier.fillMaxSize().background(Navy)) {
         // Keep the FPV feed full-bleed; shade only its edges for readable controls.
         CameraSurface(drone, Modifier.fillMaxSize())
+        if (!drone.connected) DroniBackdrop { }
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(

@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -187,7 +189,7 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                 .background(Surface, RoundedCornerShape(20.dp))
                 .border(1.dp, DroniColors.Outline, RoundedCornerShape(20.dp))
             ) {
-                Canvas(Modifier.fillMaxSize().pointerInput(isMission) {
+                Canvas(Modifier.fillMaxSize().semantics { contentDescription = "Route drawing canvas" }.pointerInput(isMission) {
                     if (isMission) return@pointerInput
                     detectDragGestures(
                         onDragStart = { p ->

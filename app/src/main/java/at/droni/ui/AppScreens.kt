@@ -22,6 +22,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -32,7 +35,7 @@ import at.droni.BuildConfig
 fun HomeScreen(connected: Boolean, onOpen: (String) -> Unit) {
     DroniBackdrop {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
-            val compact = maxHeight < 380.dp
+            val compact = maxHeight < 400.dp
             val gap = if (compact) 14.dp else 22.dp
             Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = if (compact) 12.dp else 20.dp),
                 verticalArrangement = Arrangement.spacedBy(gap)) {
@@ -160,13 +163,14 @@ fun SettingsScreen(host: String, connected: Boolean, showGrid: Boolean, defaultS
                     Text("Default drone speed", style = MaterialTheme.typography.titleMedium)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Low", "Medium", "High").forEachIndexed { index, label ->
-                            val selected = defaultSpeed == index
-                            OutlinedButton(onClick = { onSpeedChange(index) }, modifier = Modifier.weight(1f),
+                            val isSelected = defaultSpeed == index
+                            OutlinedButton(onClick = { onSpeedChange(index) },
+                                modifier = Modifier.weight(1f).semantics { selected = isSelected },
                                 shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp),
-                                border = BorderStroke(1.dp, if (selected) DroniColors.Cyan else DroniColors.Outline),
+                                border = BorderStroke(1.dp, if (isSelected) DroniColors.Cyan else DroniColors.Outline),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (selected) DroniColors.Cyan.copy(alpha = .12f) else Color.Transparent,
-                                    contentColor = if (selected) DroniColors.Cyan else DroniColors.Muted)) {
+                                    containerColor = if (isSelected) DroniColors.Cyan.copy(alpha = .12f) else Color.Transparent,
+                                    contentColor = if (isSelected) DroniColors.Cyan else DroniColors.Muted)) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text("$index", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                     Text(label, style = MaterialTheme.typography.labelSmall)
@@ -211,7 +215,8 @@ private fun PreferenceToggle(title: String, detail: String, checked: Boolean, on
             Spacer(Modifier.height(3.dp))
             Text(detail, color = DroniColors.Muted, style = MaterialTheme.typography.bodySmall)
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = onChange,
+            modifier = Modifier.semantics { contentDescription = title })
     }
 }
 

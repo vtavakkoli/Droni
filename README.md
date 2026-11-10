@@ -46,6 +46,13 @@ A drawn screen line cannot be translated to meters without pose/velocity feedbac
 
 No unnecessary trackers, location collection, accounts, or external cloud services.
 
+### Interface
+
+A shared native design system brings consistent typography, custom icons, rounded
+surfaces and clear navigation to every screen. The flight deck keeps the camera
+visible through its glass overlays. Recordings include local thumbnails, playback
+and sharing. See [interface and screen review](docs/DESIGN.md) for details.
+
 ## Build and install
 
 [![Latest build](https://img.shields.io/badge/Download-debug%20APK-blue)](https://github.com/vtavakkoli/Droni/actions/workflows/android-ci.yml)
