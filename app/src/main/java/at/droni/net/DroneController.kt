@@ -34,6 +34,18 @@ import java.util.concurrent.atomic.AtomicInteger
 class DroneController(private val context: Context) {
     private companion object { const val DEFAULT_SPEED_MODE = 1 }
 
+    @Volatile private var defaultSpeedMode = DEFAULT_SPEED_MODE
+
+    /** Persisted preference is applied only while disarmed and disconnected. */
+    fun setDefaultSpeedMode(mode: Int) {
+        require(mode in 0..2) { "Speed mode must be 0, 1 or 2" }
+        defaultSpeedMode = mode
+        if (!connected && !takeoffRequested) {
+            speedMode = mode
+            change { it.copy(speedMode = mode) }
+        }
+    }
+
     private val ui = Handler(Looper.getMainLooper())
     private val axes = AtomicReference(ElfieProtocol.Input(speedMode = DEFAULT_SPEED_MODE))
     private val packetCounter = AtomicInteger(0)
@@ -315,11 +327,11 @@ class DroneController(private val context: Context) {
             }
             socket = null
             address = null
-            axes.set(ElfieProtocol.Input(speedMode = DEFAULT_SPEED_MODE, reverseDirection = reverseDirection))
+            axes.set(ElfieProtocol.Input(speedMode = defaultSpeedMode, reverseDirection = reverseDirection))
             commandExpires = 0L
         }
         takeoffRequested = false
-        speedMode = DEFAULT_SPEED_MODE
+        speedMode = defaultSpeedMode
         headless = false
         connected = false
         linkStatus = "Disconnected. Neutral attempted; landing NOT guaranteed."
