@@ -15,7 +15,8 @@ object ElfieProtocol {
     const val DEFAULT_HOST = "172.16.10.1"
     const val PERIOD_MS = 25L
 
-    private fun clamp(value: Float, low: Float, high: Float) = value.coerceIn(low, high)
+    private fun clamp(value: Float, low: Float, high: Float): Float =
+        if (value.isNaN()) 0f else value.coerceIn(low, high)
     private fun stick(value: Float): Int =
         (63 + 64 * clamp(value, -1f, 1f)).roundToInt().coerceIn(0, 127)
 

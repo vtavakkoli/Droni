@@ -29,13 +29,21 @@ class AnnexBParser(
     fun append(data: ByteArray, count: Int = data.size) {
         require(count in 0..data.size)
         // A corrupt stream must never grow memory without bound.
-        if (count > maxBuffer || length + count > maxBuffer) length = 0
-        val needed = length + count
+        var actualCount = count
+        var dataOffset = 0
+        if (actualCount > maxBuffer) {
+            dataOffset = actualCount - maxBuffer
+            actualCount = maxBuffer
+            length = 0
+        } else if (length + actualCount > maxBuffer) {
+            length = 0
+        }
+        val needed = length + actualCount
         if (needed > bytes.size) {
             bytes = bytes.copyOf(minOf(maxBuffer, maxOf(needed, bytes.size * 2)))
         }
-        data.copyInto(bytes, length, 0, count)
-        length += count
+        data.copyInto(bytes, length, dataOffset, dataOffset + actualCount)
+        length += actualCount
         var first = findStart(0)
         if (first == -1) {
             if (length > 3) {

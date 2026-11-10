@@ -138,14 +138,14 @@ private fun FlightDeck(drone: DroneController) {
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("YAW / ALTITUDE", color = Pale, fontSize = 11.sp)
                         VirtualJoystick(Modifier.fillMaxWidth().weight(1f),
-                            enabled = drone.connected && drone.takeoffRequested,
+                            enabled = drone.connected,
                             onMove = drone::setLeft)
                         Text("left / right  •  up / down", fontSize = 9.sp, color = Color.LightGray)
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("ROLL / PITCH", color = Pale, fontSize = 11.sp)
                         VirtualJoystick(Modifier.fillMaxWidth().weight(1f),
-                            enabled = drone.connected && drone.takeoffRequested,
+                            enabled = drone.connected,
                             onMove = drone::setRight)
                         Text("strafe  •  forward / back", fontSize = 9.sp, color = Color.LightGray)
                     }
@@ -253,6 +253,7 @@ private fun VirtualJoystick(
             val down = awaitFirstDown(requireUnconsumed = false)
             fun update(point: Offset) {
                 val r = min(size.width, size.height) * 0.41f
+                if (r <= 0f) return
                 val x = ((point.x - size.width / 2f) / r).coerceIn(-1f, 1f)
                 val y = ((size.height / 2f - point.y) / r).coerceIn(-1f, 1f)
                 val norm = sqrt(x * x + y * y).coerceAtLeast(1f)

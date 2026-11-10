@@ -55,4 +55,12 @@ class ElfieProtocolTest {
         assertEquals(127, packet[5].toInt() and 0xff)
         assertEquals(254, packet[2].toInt() and 0xff)
     }
+
+    @Test fun handleNanInput() {
+        val packet = ElfieProtocol.encode(ElfieProtocol.Input(roll = Float.NaN, pitch = Float.NaN))
+        assertEquals(11, packet.size)
+        val neutral = ElfieProtocol.encode(ElfieProtocol.Input())
+        assertEquals(neutral[4], packet[4])
+        assertEquals(neutral[5], packet[5])
+    }
 }

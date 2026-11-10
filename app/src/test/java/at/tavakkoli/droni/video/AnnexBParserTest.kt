@@ -21,4 +21,11 @@ class AnnexBParserTest {
         parser.append(byteArrayOf(0, 0, 1, 0x67, 1, 0, 0, 1, 0x68, 2))
         assertEquals(1, result.size)
     }
+    @Test fun handleExceedingMaxBuffer() {
+        val result = mutableListOf<ByteArray>()
+        val parser = AnnexBParser(64) { result.add(it) }
+        val largeData = ByteArray(100) { 5 }
+        parser.append(largeData)
+        assertEquals(0, result.size)
+    }
 }

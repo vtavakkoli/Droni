@@ -69,59 +69,69 @@ class DroneController(private val context: Context) {
         }
     }
 
+    @Volatile private var lastErrorMsg: String? = null
+
     fun connect(host: String) {
         if (connected) return
-        val target = try {
-            val ip = InetAddress.getByName(host.trim())
-            require(ip is Inet4Address) { "Enter an IPv4 address" }
-            InetSocketAddress(ip, ElfieProtocol.CONTROL_PORT)
-        } catch (error: Exception) {
-            linkStatus = "Invalid drone IPv4 address: ${error.message}"
-            return
-        }
-        val network = wifiNetwork()
-        if (network == null) {
-            linkStatus = "No Wi-Fi network. Join the JJRC Elfie Wi-Fi in Android Settings."
-            return
-        }
-        try {
-            val udp = DatagramSocket(null).apply {
-                reuseAddress = true
-                bind(InetSocketAddress(0))
+        linkStatus = "Connecting..."
+        Executors.newSingleThreadExecutor().execute {
+            val target = try {
+                val ip = InetAddress.getByName(host.trim())
+                require(ip is Inet4Address) { "Enter an IPv4 address" }
+                InetSocketAddress(ip, ElfieProtocol.CONTROL_PORT)
+            } catch (error: Exception) {
+                ui.post { linkStatus = "Invalid drone IPv4 address: ${error.message}" }
+                return@execute
+            }
+            val network = wifiNetwork()
+            if (network == null) {
+                ui.post { linkStatus = "No Wi-Fi network. Join the JJRC Elfie Wi-Fi in Android Settings." }
+                return@execute
             }
             try {
-                network.bindSocket(udp)
-            } catch (error: Exception) {
-                udp.close()
-                throw error
-            }
-            synchronized(lock) {
-                socket = udp
-                address = target
-                axes.set(ElfieProtocol.Input(reverseDirection = reverseDirection))
-                packetCounter.set(0)
-                sentCount = 0
-                commandExpires = 0L
-                transmitting = true
-                worker = Executors.newSingleThreadScheduledExecutor { task ->
-                    Thread(task, "Droni-UDP-40Hz").apply { isDaemon = true }
+                val udp = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(0))
                 }
-                worker!!.scheduleAtFixedRate(::sendTick, 0, ElfieProtocol.PERIOD_MS,
-                    TimeUnit.MILLISECONDS)
+                try {
+                    network.bindSocket(udp)
+                } catch (error: Exception) {
+                    udp.close()
+                    throw error
+                }
+                synchronized(lock) {
+                    socket = udp
+                    address = target
+                    axes.set(ElfieProtocol.Input(reverseDirection = reverseDirection))
+                    packetCounter.set(0)
+                    sentCount = 0
+                    commandExpires = 0L
+                    lastErrorMsg = null
+                    transmitting = true
+                    worker = Executors.newSingleThreadScheduledExecutor { task ->
+                        Thread(task, "Droni-UDP-40Hz").apply { isDaemon = true }
+                    }
+                    worker!!.scheduleAtFixedRate(::sendTick, 0, ElfieProtocol.PERIOD_MS,
+                        TimeUnit.MILLISECONDS)
+                }
+                ui.post {
+                    connected = true
+                    linkStatus = "UDP transmitting on drone Wi-Fi • no drone ACK"
+                }
+                video.start(network, target.address.hostAddress ?: host.trim())
+            } catch (error: Exception) {
+                synchronized(lock) {
+                    transmitting = false
+                    worker?.shutdownNow()
+                    worker = null
+                    socket?.close()
+                    socket = null
+                }
+                ui.post {
+                    connected = false
+                    linkStatus = "UDP Wi-Fi setup failed: ${error.message}"
+                }
             }
-            connected = true
-            linkStatus = "UDP transmitting on drone Wi-Fi • no drone ACK"
-            video.start(network, target.address.hostAddress ?: host.trim())
-        } catch (error: Exception) {
-            synchronized(lock) {
-                transmitting = false
-                worker?.shutdownNow()
-                worker = null
-                socket?.close()
-                socket = null
-            }
-            connected = false
-            linkStatus = "UDP Wi-Fi setup failed: ${error.message}"
         }
     }
 
@@ -141,6 +151,7 @@ class DroneController(private val context: Context) {
             val udp = socket ?: return
             val to = address ?: return
             udp.send(DatagramPacket(payload, payload.size, to))
+            lastErrorMsg = null
             val count = packetCounter.incrementAndGet()
             if (count % 10 == 0) ui.post {
                 if (transmitting) {
@@ -149,7 +160,11 @@ class DroneController(private val context: Context) {
                 }
             }
         } catch (error: Exception) {
-            ui.post { linkStatus = "UDP send failed: ${error.message}. Controls neutralized." }
+            val msg = error.message ?: "send error"
+            if (msg != lastErrorMsg) {
+                lastErrorMsg = msg
+                ui.post { linkStatus = "UDP send failed: $msg. Controls neutralized." }
+            }
             neutral()
             // Keep retrying neutral packets; do NOT assert successful flight state.
         }
@@ -161,7 +176,7 @@ class DroneController(private val context: Context) {
 
     /** X = yaw, Y = ascent/descent (positive is upwards). */
     fun setLeft(x: Float, y: Float) {
-        if (!connected || !takeoffRequested) return
+        if (!connected) return
         change { current ->
             if (current.takeoff || current.land || current.emergencyStop) current
             else current.copy(yaw = x.coerceIn(-1f, 1f),
@@ -171,7 +186,7 @@ class DroneController(private val context: Context) {
 
     /** X = roll, Y = pitch (positive is forwards). */
     fun setRight(x: Float, y: Float) {
-        if (!connected || !takeoffRequested) return
+        if (!connected) return
         change { current ->
             if (current.takeoff || current.land || current.emergencyStop) current
             else current.copy(roll = x.coerceIn(-1f, 1f),
