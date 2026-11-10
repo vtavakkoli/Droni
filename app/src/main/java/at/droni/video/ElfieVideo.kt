@@ -143,7 +143,7 @@ class ElfieVideo(
                 if (recordRequested && recorder == null && kind == 5 &&
                     sps != null && pps != null) {
                     try {
-                        recorder = ElfieMp4Recorder(context, sps!!, pps!!)
+                        recorder = ElfieMp4Recorder(context, sps, pps)
                         recordStatus(true, "● Recording MP4 in Movies / Droni")
                     } catch (error: Exception) {
                         recordRequested = false
