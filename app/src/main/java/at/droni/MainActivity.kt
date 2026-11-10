@@ -32,6 +32,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import at.droni.net.DroneController
 import at.droni.protocol.ElfieProtocol
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sign
@@ -85,9 +89,56 @@ internal fun FlightDeck(
     drone: DroneController,
     host: String,
     onHostChange: (String) -> Unit,
-    onHome: () -> Unit,
-    showGrid: Boolean
+    showGrid: Boolean,
+    autoCalibrationBeforeTakeoff: Boolean
 ) {
+    val scope = rememberCoroutineScope()
+    var preflightJob by remember { mutableStateOf<Job?>(null) }
+    var calibrating by remember { mutableStateOf(false) }
+    var preflightSequence by remember { mutableIntStateOf(0) }
+
+    val cancelPreflight: () -> Unit = {
+        preflightSequence++
+        preflightJob?.cancel()
+        preflightJob = null
+        calibrating = false
+    }
+
+    // No takeoff can be queued after leaving the deck or disconnecting.
+    DisposableEffect(Unit) {
+        onDispose { preflightJob?.cancel() }
+    }
+    LaunchedEffect(drone.connected) {
+        if (!drone.connected) cancelPreflight()
+    }
+
+    val requestTakeoff: () -> Unit = {
+        if (drone.connected && !drone.takeoffRequested && !calibrating) {
+            if (autoCalibrationBeforeTakeoff) {
+                calibrating = true
+                val sequence = ++preflightSequence
+                preflightJob = scope.launch {
+                    try {
+                        drone.neutral()
+                        drone.calibrate() // Disarmed; this request is not acknowledged.
+                        delay(1_800L)  // Calibration flag expires before takeoff request.
+                        ensureActive()
+                        if (sequence == preflightSequence &&
+                            drone.connected && !drone.takeoffRequested) {
+                            drone.takeoff()
+                        }
+                    } finally {
+                        if (sequence == preflightSequence) {
+                            calibrating = false
+                            preflightJob = null
+                        }
+                    }
+                }
+            } else {
+                drone.takeoff()
+            }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Navy)) {
         // Keep the FPV feed full-bleed; shade only its edges for readable controls.
@@ -147,6 +198,10 @@ internal fun FlightDeck(
                     drone = drone,
                     host = host,
                     onHostChange = { onHostChange(it.take(32)) },
+                    onDisconnect = {
+                        cancelPreflight()
+                        drone.disconnect()
+                    },
                     compact = compact
                 )
 
@@ -163,19 +218,29 @@ internal fun FlightDeck(
                         label = "01  YAW / ALT",
                         hint = "TURN  ·  CLIMB",
                         size = stickSize,
-                        enabled = drone.connected,
+                        enabled = drone.connected && !calibrating,
                         onMove = drone::setLeft
                     )
                     FlightConsole(
                         drone = drone,
-                        modifier = Modifier.width(consoleWidth)
+                        modifier = Modifier.width(consoleWidth),
+                        preflightCalibrating = calibrating,
+                        onTakeoff = requestTakeoff,
+                        onLand = {
+                            cancelPreflight()
+                            drone.land()
+                        },
+                        onMotorStop = {
+                            cancelPreflight()
+                            drone.emergencyStop()
+                        }
                     )
                     StickDock(
                         modifier = Modifier.width(stickSize + 8.dp),
                         label = "02  ROLL / PITCH",
                         hint = "STRAFE  ·  MOVE",
                         size = stickSize,
-                        enabled = drone.connected,
+                        enabled = drone.connected && !calibrating,
                         onMove = drone::setRight
                     )
                 }
@@ -184,39 +249,6 @@ internal fun FlightDeck(
                 DeckStatus(drone)
             }
 
-            // Navigation/recording are separate translucent actions; the original
-            // joystick/control layout is intentionally preserved.
-            Row(
-                modifier = Modifier.align(Alignment.TopEnd)
-                    .padding(top = 71.dp, end = 22.dp)
-                    .background(Navy.copy(alpha = .42f), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 4.dp, vertical = 3.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = {
-                    drone.neutral()
-                    onHome()
-                }) { Text("‹ MENU", color = Pale, fontSize = 11.sp) }
-                Button(
-                    enabled = drone.connected,
-                    onClick = drone::toggleRecording,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (drone.recording) Danger else Accent.copy(alpha = .56f)
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    modifier = Modifier.height(35.dp),
-                    shape = RoundedCornerShape(9.dp)
-                ) {
-                    Text(if (drone.recording) "■  STOP REC" else "●  REC MP4",
-                        color = Color.White, fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold)
-                }
-                if (drone.recording || drone.recordingStatus.startsWith("Saved")) {
-                    Text(drone.recordingStatus, fontSize = 9.sp, color = Pale,
-                        maxLines = 1, modifier = Modifier.widthIn(max = 190.dp))
-                }
-            }
         }
     }
 }
@@ -226,6 +258,7 @@ private fun DeckHeader(
     drone: DroneController,
     host: String,
     onHostChange: (String) -> Unit,
+    onDisconnect: () -> Unit,
     compact: Boolean
 ) {
     val corner = RoundedCornerShape(14.dp)
@@ -254,7 +287,11 @@ private fun DeckHeader(
                 fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1
             )
             Spacer(Modifier.height(3.dp))
-            Text(drone.videoStatus, color = Pale.copy(alpha = 0.78f),
+            Text(
+                if (drone.recording || drone.recordingStatus.startsWith("Saved") ||
+                    drone.recordingStatus.startsWith("Recording")) drone.recordingStatus
+                else drone.videoStatus,
+                color = Pale.copy(alpha = 0.78f),
                 fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
@@ -279,9 +316,27 @@ private fun DeckHeader(
             )
         }
 
+        // Recording belongs in the header, not over the right joystick.
+        Button(
+            onClick = drone::toggleRecording,
+            enabled = drone.connected,
+            modifier = Modifier.width(if (compact) 90.dp else 106.dp).height(38.dp),
+            shape = RoundedCornerShape(9.dp),
+            contentPadding = PaddingValues(horizontal = 3.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (drone.recording) Danger else Accent.copy(alpha = 0.34f),
+                contentColor = Pale,
+                disabledContainerColor = Panel.copy(alpha = 0.20f),
+                disabledContentColor = Pale.copy(alpha = 0.5f)
+            )
+        ) {
+            Text(if (drone.recording) "■ STOP REC" else "● REC MP4",
+                fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+
         if (drone.connected) {
             OutlinedButton(
-                onClick = drone::disconnect,
+                onClick = onDisconnect,
                 modifier = Modifier.width(96.dp).height(38.dp),
                 shape = RoundedCornerShape(9.dp),
                 border = BorderStroke(1.dp, Pale.copy(alpha = 0.40f)),
@@ -307,7 +362,14 @@ private fun DeckHeader(
 }
 
 @Composable
-private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier) {
+private fun FlightConsole(
+    drone: DroneController,
+    modifier: Modifier = Modifier,
+    preflightCalibrating: Boolean,
+    onTakeoff: () -> Unit,
+    onLand: () -> Unit,
+    onMotorStop: () -> Unit
+) {
     val corner = RoundedCornerShape(16.dp)
     Column(
         modifier = modifier
@@ -330,8 +392,8 @@ private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(
                 modifier = Modifier.weight(1f).height(44.dp),
-                enabled = drone.connected && !drone.takeoffRequested,
-                onClick = drone::takeoff,
+                enabled = drone.connected && !drone.takeoffRequested && !preflightCalibrating,
+                onClick = onTakeoff,
                 shape = RoundedCornerShape(9.dp),
                 contentPadding = PaddingValues(horizontal = 2.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -340,13 +402,13 @@ private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier)
                     disabledContentColor = Pale.copy(alpha = 0.55f)
                 )
             ) {
-                Text("TAKE OFF", fontSize = 10.sp,
+                Text(if (preflightCalibrating) "CALIBRATING" else "TAKE OFF", fontSize = 10.sp,
                     fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Button(
                 modifier = Modifier.weight(1f).height(44.dp),
                 enabled = drone.connected,
-                onClick = drone::land,
+                onClick = onLand,
                 shape = RoundedCornerShape(9.dp),
                 contentPadding = PaddingValues(horizontal = 2.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -361,7 +423,7 @@ private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier)
             Button(
                 modifier = Modifier.weight(1.3f).height(44.dp),
                 enabled = drone.connected,
-                onClick = drone::emergencyStop,
+                onClick = onMotorStop,
                 shape = RoundedCornerShape(9.dp),
                 contentPadding = PaddingValues(horizontal = 2.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -386,7 +448,7 @@ private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier)
             )
             ConsoleOption(
                 label = "CALIBRATE",
-                enabled = drone.connected && !drone.takeoffRequested,
+                enabled = drone.connected && !drone.takeoffRequested && !preflightCalibrating,
                 onClick = drone::calibrate, modifier = Modifier.weight(1.25f)
             )
             ConsoleOption(
