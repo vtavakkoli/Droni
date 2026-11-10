@@ -221,8 +221,6 @@ private fun DeckHeader(
                 modifier = Modifier
                     .width(114.dp)
                     .height(36.dp)
-                    .background(Navy.copy(alpha = 0.42f), RoundedCornerShape(8.dp))
-                    .border(1.dp, Pale.copy(alpha = 0.17f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 9.dp, vertical = 9.dp)
             )
         }
