@@ -59,6 +59,9 @@ fun DroniApp(drone: DroneController) {
     var page by remember { mutableStateOf("home") }
     var host by remember { mutableStateOf(settings.droneHost) }
     var showGrid by remember { mutableStateOf(settings.gridOverlay) }
+    var defaultSpeed by remember { mutableIntStateOf(settings.defaultDroneSpeed) }
+    var autoCalibration by remember { mutableStateOf(settings.autoCalibrationBeforeTakeoff) }
+    LaunchedEffect(defaultSpeed) { drone.setDefaultSpeedMode(defaultSpeed) }
     var leaveFlightConfirm by remember { mutableStateOf(false) }
 
     fun navigateHome() {
@@ -95,8 +98,8 @@ fun DroniApp(drone: DroneController) {
         "fly" -> FlightDeck(
             drone = drone, host = host,
             onHostChange = { host = it; settings.droneHost = it },
-            onHome = ::navigateHome,
-            showGrid = showGrid
+            showGrid = showGrid,
+            autoCalibrationBeforeTakeoff = autoCalibration
         )
         "settings" -> PageFrame("SETTINGS", "Personalize your flight deck", ::navigateHome) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
@@ -123,13 +126,47 @@ fun DroniApp(drone: DroneController) {
                         showGrid = it; settings.gridOverlay = it
                     })
                 }
-                Text("Default drone speed: 1 / 2 · configured in Flight Control",
-                    color = Muted, fontSize = 13.sp)
-                Text("Recordings: Movies / Droni · local MP4 video; no cloud upload",
-                    color = Muted, fontSize = 13.sp)
-                Text("Wi-Fi sensor telemetry has not been verified. Calibrate changes the drone's " +
-                    "level reference, not its location or heading. No GPS/autonomy is inferred.",
-                    color = Alert, fontSize = 13.sp)
+                Text("Default drone speed", color = White, fontWeight = FontWeight.SemiBold)
+                Text("Applied on start and after disconnect. You can change speed during flight.",
+                    color = Muted, fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    for (mode in 0..2) {
+                        OutlinedButton(
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                defaultSpeed = mode
+                                settings.defaultDroneSpeed = mode
+                                drone.setDefaultSpeedMode(mode)
+                            },
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp, if (defaultSpeed == mode) Mint else Muted.copy(alpha = .35f)
+                            ),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (defaultSpeed == mode)
+                                    Cyan.copy(alpha = .20f) else Color.Transparent,
+                                contentColor = White
+                            )
+                        ) {
+                            Text("Speed $mode",
+                                fontWeight = if (defaultSpeed == mode)
+                                    FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                }
+                HorizontalDivider(color = Muted.copy(alpha = .18f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Auto-calibrate before takeoff", color = White)
+                        Text("When enabled, request calibration while disarmed, wait, then " +
+                            "request takeoff. The drone must be level and stationary. " +
+                            "Calibration is not acknowledged.",
+                            fontSize = 12.sp, color = Muted)
+                    }
+                    Switch(checked = autoCalibration, onCheckedChange = {
+                        autoCalibration = it
+                        settings.autoCalibrationBeforeTakeoff = it
+                    })
+                }
             }
         }
         "path" -> PathScreen(drone, ::navigateHome)

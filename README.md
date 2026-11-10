@@ -25,7 +25,7 @@ Droni brings hands-on flight control, first-person video, camera recording, a dr
 | **Draw Path** | Finger-drawn route, constrained preview, animated simulation | Implemented |
 | **Experimental Path Trial** | Level-calibration request → takeoff request → short bounded screen-direction commands → landing request, with abort | **OPEN LOOP. Not real path following; safety/landing unverified** |
 | **Recordings** | Start/stop H.264 MP4 capture from flight deck; local Android Movies/Droni library | Implemented; verify with real camera |
-| **Settings** | Persistent Wi‑Fi gateway, optional framing grid, controller guidance | Implemented |
+| **Settings** | Persistent Wi-Fi gateway, default speed 0/1/2, optional auto-calibration before manual takeoff, framing grid | Implemented |
 | **About** | Project credits, copyright, source and license | Implemented |
 
 ### Why Droni does not claim autonomous path following
@@ -62,6 +62,12 @@ gradle --no-daemon testDebugUnitTest assembleDebug
 ```
 
 Gradle wrapper properties are provided; its binary bootstrap JAR is not committed. See [build details](docs/BUILD.md).
+
+## Flight preferences
+
+In **Settings**, choose the persistent default speed (0, 1, or 2; initially **1**). You may also enable **Auto-calibrate before takeoff** (off by default). With this enabled, a manual Take Off first sends a calibration request while the drone is disarmed, waits approximately 1.8 seconds, then sends takeoff only if the same flight screen remains active and connected. Calibration is unacknowledged; it does not verify physical orientation or position. Keep the drone stationary and level. Experimental Draw Path missions have their own calibration step.
+
+In **Drone Fly**, **REC MP4** is on the top bar; Android Back returns to the home menu. Recordings remain available from the main menu.
 
 ## Connect a drone
 
