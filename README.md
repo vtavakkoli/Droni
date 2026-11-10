@@ -1,50 +1,113 @@
-# Droni — JJRC Elfie Android Flight Controller
+<p align="center">
+  <img src="docs/droni-logo.svg" alt="Droni — JJRC Elfie Android Flight Deck, by Dr. Vahid Tavakkoli" width="850"/>
+</p>
 
-**Written by Dr. Vahid Tavakkoli** · [@vtavakkoli](https://github.com/vtavakkoli)
+<p align="center">
+  <a href="https://github.com/vtavakkoli/Droni/actions/workflows/android-ci.yml"><img alt="Android CI" src="https://github.com/vtavakkoli/Droni/actions/workflows/android-ci.yml/badge.svg?branch=main"/></a>
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Android-7F52FF?logo=kotlin"/>
+  <img alt="Android API" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android"/>
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-6CE7D0"/>
+  <img alt="Version" src="https://img.shields.io/badge/version-0.2.0-47C5F7"/>
+</p>
 
-Droni is an open-source native Android flight controller for the JJRC Elfie Wi‑Fi drone. It ports the original Android **11-byte `FF 08` control protocol** from my verified [Python JJRC Elfie controller](https://github.com/vtavakkoli/jjrc-elfie), informed by the supplied original Android APK decompilation.
+<h1 align="center">Droni</h1>
+<p align="center"><strong>Native Android flight deck for the JJRC Elfie Wi‑Fi drone</strong><br/>
+<strong>Created by Dr. Vahid Tavakkoli · © 2026</strong></p>
 
-## Features
-- Native Android interface with two independent touchscreen joysticks, continuous 40 Hz control transmission, real-time link status and built-in video preview
-- Takeoff, land, emergency motor stop, trim-neutral flight, speed 0/1/2 (default mode 1), headless mode, disarmed calibration
-- Wi‑Fi network-scoped sockets: the drone's no-internet Wi‑Fi can be used even when mobile data is enabled
-- TCP H.264 camera streaming with the original handshake and hardware-accelerated Android `MediaCodec` decoding
-- Zeroed controls on release, activity pause and disconnect; explicit warnings when UDP send fails
-- Deterministic packet test vectors matching the Python regression tests
+Droni brings hands-on flight control, first-person video, camera recording, a draw-to-preview mission designer, and clear diagnostics into a polished, privacy-friendly Android application. Built from the original <a href="https://github.com/vtavakkoli/jjrc-elfie">JJRC Elfie Python controller</a> and the decompiled legacy Android flight protocol.
 
-## Connect and fly safely
-1. Build with Android Studio (JDK 17+, Android SDK 36) and install on Android 8.0+ (API 26).
-2. Connect the phone manually to the **JJRC Elfie drone's Wi‑Fi**, and choose **Stay connected** if Android warns that it has no internet.
-3. Launch Droni, keep the default host `172.16.10.1` unless your drone uses a different gateway, then tap **Connect**.
-4. Confirm both UDP transmission and video reception status; with **propellers removed**, test axes and action buttons first.
-5. In a safe open area, tap **Take off** to request the drone's own altitude-hold takeoff. **Left joystick**: yaw and climb/descent; **right joystick**: roll and pitch.
-6. **Land** requests a landing. **Emergency stop** cuts motor power and may cause an uncontrolled fall. Closing the app is *not* a guaranteed safe landing.
+## What's inside
 
-The UI's “UDP sending” status describes **local transmission only**: the drone supplies no acknowledged flight-control/altitude/battery telemetry to this app. Never infer physical flight state from it. Do not use indoors near people or obstacles.
+| Screen | Capabilities | Status |
+| :-- | :-- | :-- |
+| **Splash + Home** | Branded splash screen, five-card main menu | Implemented |
+| **Drone Fly** | Original glass-style dual-joystick FPV layout, takeoff, land, motor stop, speed, headless, disarmed calibration, reversal | Implemented; physical validation needed |
+| **Draw Path** | Finger-drawn route, constrained preview, animated simulation | Implemented |
+| **Experimental Path Trial** | Level-calibration request → takeoff request → short bounded screen-direction commands → landing request, with abort | **OPEN LOOP. Not real path following; safety/landing unverified** |
+| **Recordings** | Start/stop H.264 MP4 capture from flight deck; local Android Movies/Droni library | Implemented; verify with real camera |
+| **Settings** | Persistent Wi‑Fi gateway, optional framing grid, controller guidance | Implemented |
+| **About** | Project credits, copyright, source and license | Implemented |
 
-## Protocol
-Control: UDP host `172.16.10.1:8080`, **11 bytes every 25 ms**. Video: TCP `172.16.10.1:8888`, original 106-byte request, 106-byte server greeting, then raw H.264 NAL stream. Hardware decoder = Android `MediaCodec` (not a generic HTTP/RTSP player).
+### Why Droni does not claim autonomous path following
 
-There are no reliable IMU/barometer readings exposed by this controller. The desktop Python project's experimental camera-assisted visual hold is deliberately **not enabled on Android**: its feedback gains are not validated on real hardware.
+**The JJRC Elfie does not supply verified GPS, optical-flow position, heading, IMU, barometer, or touchdown telemetry over this Wi‑Fi protocol.** The older sensor diagnostic did not confirm any inertial measurements. Sending a `calibrate` flag only requests sensor leveling — it cannot establish a world coordinate system or detect where the drone is.
 
-## Stack
-Kotlin, Jetpack Compose + Material 3 (stable BOM), AndroidX Activity, Android `ConnectivityManager` / `Network`, Java/Android sockets and Android hardware `MediaCodec`. No archived IJKPlayer or native binary dependencies.
+A drawn screen line cannot be translated to meters without pose/velocity feedback. Droni therefore offers (1) **offline path simulation**, and (2) a deliberately explicit, tightly bounded, supervised **open-loop experimental trial**. The latter executes directional *pulses*, not actual waypoint tracking; wind, heading, scale, and inertia will alter the outcome. It requests landing at the end or upon cancellation but **cannot confirm landing**. For initial testing, **remove propellers**. Do not run an experimental trial around people, obstacles, indoors or over property.
 
-## Android application ID
-The Kotlin source package, Gradle namespace, and Android application ID are all `at.droni`. This changes the Android application identity, so an installed previous version will remain a separate app until manually uninstalled. The launcher uses an adaptive quadcopter icon.
+## Android stack
 
-## Build
+- **Kotlin**, **Jetpack Compose**, **Material 3** — native reactive UI, no embedded web views
+- **AndroidX Core SplashScreen 1.2.0** — official launch splash on Android 8.0+
+- **Android ConnectivityManager** — explicitly selects drone Wi‑Fi even when that network has no internet
+- **UDP 8080, 11-byte FF 08** — firmware-compatible original Android control packets, every ~25 ms
+- **TCP 8888**, original Elfie handshake, **Android MediaCodec** for H.264 video
+- **Android MediaMuxer + MediaStore** — camera MP4 recording to Movies/Droni without a third-party transcoder
+- **JUnit + GitHub Actions** — protocol, H.264 parser and path-planner regression tests
+
+No unnecessary trackers, location collection, accounts, or external cloud services.
+
+## Build and install
+
+[![Latest build](https://img.shields.io/badge/Download-debug%20APK-blue)](https://github.com/vtavakkoli/Droni/actions/workflows/android-ci.yml)
+
+1. Open [GitHub Actions → Android CI](https://github.com/vtavakkoli/Droni/actions/workflows/android-ci.yml) and choose a **successful** run.
+2. Download **droni-debug-apk** under Artifacts, unzip, and install the APK on Android 8.0+.
+3. Or build with Android Studio + JDK 17 and Android SDK 36:
+
 ```bash
 git clone https://github.com/vtavakkoli/Droni.git
 cd Droni
-./gradlew testDebugUnitTest assembleDebug
+# With Gradle 9.5 installed:
+gradle --no-daemon testDebugUnitTest assembleDebug
 ```
-Install `app/build/outputs/apk/debug/app-debug.apk` after a successful Android SDK build. The Gradle wrapper JAR must be generated locally with Android Studio's bundled Gradle or an installed Gradle distribution if absent; see `docs/BUILD.md`. No APK or physical drone validation is claimed by source publication alone.
 
-## Project layout
-- `app/src/main/java/at/droni/protocol/ElfieProtocol.kt` — tested 11-byte encoder
-- `app/src/main/java/at/droni/net/DroneController.kt` — 40 Hz UDP flight link and safety interlocks
-- `app/src/main/java/at/droni/video/ElfieVideo.kt` — TCP handshake and H.264 decoding
-- `app/src/main/java/at/droni/MainActivity.kt` — native Compose flight-deck interface
+Gradle wrapper properties are provided; its binary bootstrap JAR is not committed. See [build details](docs/BUILD.md).
 
-© 2026 **Dr. Vahid Tavakkoli**. MIT licensed. This is experimental software and is not a certified flight controller.
+## Connect a drone
+
+1. Connect the phone to the **JJRC Elfie Wi‑Fi** and choose **Stay connected** if Android says it has no internet.
+2. Launch **Droni → Drone Fly**. Connect to default `172.16.10.1` (or your Wi‑Fi gateway).
+3. Before attaching propellers, test button effects and neutral-stick behavior.
+4. In clear, safe conditions, use takeoff, manual sticks and land. The **MOTOR STOP** button stops motors and can cause an uncontrolled fall. Closing Droni does not guarantee a safe landing.
+5. While receiving video, tap **REC MP4** to start and **STOP REC** to save. Open **Recordings** to view saved clips. MP4 timestamp and camera format assumptions must be validated on hardware.
+
+### Protocol reference
+
+| Channel | Value |
+| :-- | :-- |
+| Drone Wi‑Fi gateway (default) | `172.16.10.1` |
+| Flight | UDP `8080` · 11-byte `FF 08` + complement checksum |
+| Control period | Approx. 25 milliseconds (40 Hz), not a real-time guarantee |
+| Camera | TCP `8888` · proprietary 106-byte greeting · H.264 Annex-B |
+| Sensor telemetry | **Not verified** |
+| Path-tracking accuracy | **Not available without position feedback** |
+
+The control UI's “connected” indicator means sockets are configured and local packets are being sent; **there is no drone acknowledgement or sensor validation**.
+
+## Project map
+
+```text
+app/src/main/java/at/droni/
+├── MainActivity.kt          # Existing FPV joystick flight deck
+├── DroniApp.kt              # Splash destination, menu, settings, path, recordings, about
+├── protocol/ElfieProtocol.kt
+├── net/DroneController.kt
+├── mission/PathPlanner.kt   # Unit-tested bounded path planner, no GPS claims
+├── settings/DroniSettings.kt
+└── video/
+    ├── ElfieVideo.kt        # Original camera handshake + MediaCodec
+    ├── AnnexBParser.kt
+    └── ElfieMp4Recorder.kt  # Local MP4 remux + MediaStore
+```
+
+## Documentation & contribution
+
+- [Safety and experimental mission limitations](docs/SAFETY.md)
+- [Architecture and protocol](docs/ARCHITECTURE.md)
+- [Development and CI](docs/BUILD.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+
+---
+
+**© 2026 Dr. Vahid Tavakkoli.** [MIT License](LICENSE). JJRC Elfie is a third-party product; this is an independent experimental controller, not endorsed by the manufacturer.

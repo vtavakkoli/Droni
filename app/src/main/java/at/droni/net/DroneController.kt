@@ -51,6 +51,10 @@ class DroneController(private val context: Context) {
         private set
     var videoStatus by mutableStateOf("WAITING")
         private set
+    var recording by mutableStateOf(false)
+        private set
+    var recordingStatus by mutableStateOf("Not recording")
+        private set
     var sentCount by mutableIntStateOf(0)
         private set
     var speedMode by mutableIntStateOf(DEFAULT_SPEED_MODE)
@@ -62,7 +66,18 @@ class DroneController(private val context: Context) {
     var takeoffRequested by mutableStateOf(false)
         private set
 
-    val video = ElfieVideo { text -> ui.post { videoStatus = text } }
+    val video = ElfieVideo(context,
+        { text -> ui.post { videoStatus = text } },
+        { active, message -> ui.post {
+            recording = active
+            recordingStatus = message
+        } }
+    )
+
+    fun toggleRecording() {
+        if (!connected) return
+        if (recording) video.endRecording() else video.beginRecording()
+    }
 
     /** Select Wi-Fi even if Android routes default internet traffic through mobile data. */
     private fun wifiNetwork(): Network? {

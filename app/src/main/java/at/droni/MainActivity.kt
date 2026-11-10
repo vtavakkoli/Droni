@@ -5,6 +5,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var controller: DroneController
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         controller = DroneController(applicationContext)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -61,7 +63,7 @@ class MainActivity : ComponentActivity() {
                     onBackground = Pale,
                 )
             ) {
-                FlightDeck(controller)
+                DroniApp(controller)
             }
         }
     }
@@ -79,8 +81,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun FlightDeck(drone: DroneController) {
-    var host by remember { mutableStateOf(ElfieProtocol.DEFAULT_HOST) }
+internal fun FlightDeck(
+    drone: DroneController,
+    host: String,
+    onHostChange: (String) -> Unit,
+    onHome: () -> Unit,
+    showGrid: Boolean
+) {
 
     Box(Modifier.fillMaxSize().background(Navy)) {
         // Keep the FPV feed full-bleed; shade only its edges for readable controls.
@@ -95,6 +102,19 @@ private fun FlightDeck(drone: DroneController) {
                 )
             )
         )
+
+        if (showGrid) {
+            Canvas(Modifier.fillMaxSize()) {
+                for (i in 1..2) {
+                    val x = size.width * i / 3f
+                    val y = size.height * i / 3f
+                    drawLine(Accent.copy(alpha = .16f), Offset(x, 0f),
+                        Offset(x, size.height), 1.dp.toPx())
+                    drawLine(Accent.copy(alpha = .16f), Offset(0f, y),
+                        Offset(size.width, y), 1.dp.toPx())
+                }
+            }
+        }
 
         // Respect the notch, status bar, camera cutout and landscape navigation bar.
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -126,7 +146,7 @@ private fun FlightDeck(drone: DroneController) {
                 DeckHeader(
                     drone = drone,
                     host = host,
-                    onHostChange = { host = it.take(32) },
+                    onHostChange = { onHostChange(it.take(32)) },
                     compact = compact
                 )
 
@@ -162,6 +182,40 @@ private fun FlightDeck(drone: DroneController) {
 
                 Spacer(Modifier.height(8.dp))
                 DeckStatus(drone)
+            }
+
+            // Navigation/recording are separate translucent actions; the original
+            // joystick/control layout is intentionally preserved.
+            Row(
+                modifier = Modifier.align(Alignment.TopEnd)
+                    .padding(top = 71.dp, end = 22.dp)
+                    .background(Navy.copy(alpha = .42f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = {
+                    drone.neutral()
+                    onHome()
+                }) { Text("‹ MENU", color = Pale, fontSize = 11.sp) }
+                Button(
+                    enabled = drone.connected,
+                    onClick = drone::toggleRecording,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (drone.recording) Danger else Accent.copy(alpha = .56f)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier.height(35.dp),
+                    shape = RoundedCornerShape(9.dp)
+                ) {
+                    Text(if (drone.recording) "■  STOP REC" else "●  REC MP4",
+                        color = Color.White, fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold)
+                }
+                if (drone.recording || drone.recordingStatus.startsWith("Saved")) {
+                    Text(drone.recordingStatus, fontSize = 9.sp, color = Pale,
+                        maxLines = 1, modifier = Modifier.widthIn(max = 190.dp))
+                }
             }
         }
     }

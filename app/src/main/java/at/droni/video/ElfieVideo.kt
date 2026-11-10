@@ -1,5 +1,6 @@
 package at.droni.video
 
+import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.net.Network
@@ -20,7 +21,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Written by Dr. Vahid Tavakkoli.
  */
-class ElfieVideo(private val status: (String) -> Unit) {
+class ElfieVideo(
+    private val context: Context,
+    private val status: (String) -> Unit,
+    private val recordStatus: (Boolean, String) -> Unit
+) {
     companion object {
         private const val HELLO_HEX =
             "495464000000580000009bf89049c926884d4f922b3b33ba7eceacef63f77157ab2f53e3f768ecd9e18547b8c22e21d01bfb6b3de3" +
@@ -31,6 +36,19 @@ class ElfieVideo(private val status: (String) -> Unit) {
     }
 
     private val running = AtomicBoolean(false)
+    @Volatile private var recordRequested = false
+
+    /** User controls movie recording from the Flight Deck. */
+    fun beginRecording() {
+        recordRequested = true
+        recordStatus(true, "Waiting for H.264 keyframe…")
+    }
+
+    fun endRecording() {
+        recordRequested = false
+        recordStatus(false, "Finishing MP4…")
+    }
+
     @Volatile private var displaySurface: Surface? = null
     @Volatile private var socket: Socket? = null
     @Volatile private var receiver: Thread? = null
@@ -94,6 +112,7 @@ class ElfieVideo(private val status: (String) -> Unit) {
 
     private fun decodeStream(input: DataInputStream, surface: Surface) {
         var codec: MediaCodec? = null
+        var recorder: ElfieMp4Recorder? = null
         var sps: ByteArray? = null
         var pps: ByteArray? = null
         var decoded = 0
@@ -119,6 +138,26 @@ class ElfieVideo(private val status: (String) -> Unit) {
                 val kind = nal[startLength].toInt() and 0x1f
                 if (kind == 7) sps = nal
                 if (kind == 8) pps = nal
+
+                // Start only at an IDR frame, so the recording begins decodably.
+                if (recordRequested && recorder == null && kind == 5 &&
+                    sps != null && pps != null) {
+                    try {
+                        recorder = ElfieMp4Recorder(context, sps!!, pps!!)
+                        recordStatus(true, "● Recording MP4 in Movies / Droni")
+                    } catch (error: Exception) {
+                        recordRequested = false
+                        recordStatus(false, "Recording failed: ${error.message}")
+                    }
+                }
+                try {
+                    recorder?.push(nal)
+                } catch (error: Exception) {
+                    recorder?.abort()
+                    recorder = null
+                    recordRequested = false
+                    recordStatus(false, "Recording error: ${error.message}")
+                }
 
                 if (codec == null && sps != null && pps != null) {
                     val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 640, 480)
@@ -155,6 +194,12 @@ class ElfieVideo(private val status: (String) -> Unit) {
 
             val chunk = ByteArray(16384)
             while (running.get() && displaySurface === surface && surface.isValid) {
+                if (!recordRequested && recorder != null) {
+                    val result = recorder!!.finish()
+                    recorder = null
+                    recordStatus(false, if (result == null) "No movie was saved"
+                        else "Saved MP4 to Movies / Droni")
+                }
                 val count = try { input.read(chunk) } catch (_: SocketTimeoutException) { 0 }
                 if (count < 0) throw java.io.EOFException("video connection closed")
                 if (count > 0) {
@@ -170,12 +215,19 @@ class ElfieVideo(private val status: (String) -> Unit) {
                 }
             }
         } finally {
+            recordRequested = false
+            if (recorder != null) {
+                val saved = recorder!!.finish()
+                recordStatus(false, if (saved == null) "Recording ended without a file"
+                    else "Saved MP4 to Movies / Droni")
+            }
             try { codec?.stop() } catch (_: Exception) {}
             try { codec?.release() } catch (_: Exception) {}
         }
     }
 
     fun stop() {
+        recordRequested = false
         running.set(false)
         try { socket?.close() } catch (_: Exception) {}
         receiver?.interrupt()

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="320" viewBox="0 0 1000 320" role="img" aria-labelledby="title desc">
+<title id="title">Droni — JJRC Elfie Flight Deck</title>
+<desc id="desc">Droni cyan quadcopter mark and professional wordmark on navy</desc>
+<defs>
+  <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#071426"/><stop offset="1" stop-color="#0b3043"/></linearGradient>
+  <linearGradient id="a" x2="1" y2="1"><stop stop-color="#4acbff"/><stop offset="1" stop-color="#64ead7"/></linearGradient>
+</defs>
+<rect width="1000" height="320" rx="40" fill="url(#bg)"/>
+<rect x="32" y="32" width="256" height="256" rx="52" fill="#102a42" stroke="#24627b" stroke-width="2"/>
+<g transform="translate(160 160)">
+ <path d="M-38 -27 -79 -67 M38 -27 79 -67 M-38 27 -79 67 M38 27 79 67" stroke="#e8f7ff" stroke-width="12" stroke-linecap="round"/>
+ <g fill="none" stroke="url(#a)" stroke-width="9">
+  <circle cx="-81" cy="-69" r="25"/><circle cx="81" cy="-69" r="25"/>
+  <circle cx="-81" cy="69" r="25"/><circle cx="81" cy="69" r="25"/>
+ </g>
+ <path d="M0 -55 Q47 -51 49 0 Q47 44 0 57 Q-47 44 -49 0 Q-47 -51 0 -55" fill="#e9f8ff"/>
+ <circle cx="0" cy="5" r="22" fill="#175072" stroke="#4ae9d3" stroke-width="9"/>
+ <circle cx="-7" cy="-4" r="5" fill="#fff"/>
+</g>
+<text x="348" y="168" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="120" font-weight="800" letter-spacing="4" fill="#eefaff">DRONI</text>
+<text x="353" y="217" font-family="Segoe UI,Arial,sans-serif" font-size="27" letter-spacing="8" fill="#6ce9db">JJRC ELFIE FLIGHT DECK</text>
+<text x="354" y="263" font-family="Segoe UI,Arial,sans-serif" font-size="21" fill="#a4c4d8">Dr. Vahid Tavakkoli  ·  2026</text>
+</svg>
