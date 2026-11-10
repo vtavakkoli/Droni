@@ -41,19 +41,6 @@ cd Droni
 ```
 Install `app/build/outputs/apk/debug/app-debug.apk` after a successful Android SDK build. The Gradle wrapper JAR must be generated locally with Android Studio's bundled Gradle or an installed Gradle distribution if absent; see `docs/BUILD.md`. No APK or physical drone validation is claimed by source publication alone.
 
-## Troubleshooting Android Studio launch after package migration
-If Run shows `Activity class {at.tavakkoli.droni/at.droni.MainActivity} does not exist`,
-Android Studio is still launching the **old application ID** after the package rename.
-The APK's correct identity is `at.droni` and its launcher activity is `at.droni.MainActivity`.
-
-1. Pull the latest `main`, and use **File → Sync Project with Gradle Files**.
-2. Open **Run → Edit Configurations**, delete any stale `app` Android App configuration, then create a new **Android App** run configuration with module `Droni.app` and **Launch: Default Activity**.
-3. Use **Build → Clean Project**, then **Build → Rebuild Project**, and launch the newly configured `app`.
-4. If the IDE still launches the old ID, disconnect the drone, then remove any previous installation with `adb uninstall at.tavakkoli.droni` (only if you no longer need the old installation). Keep `at.droni` installed or reinstall it from the newly built APK.
-
-To inspect the two installed package names, run `adb shell pm list packages | grep droni` (on Windows PowerShell use `findstr droni` instead of `grep`).
-Android treats `at.tavakkoli.droni` and `at.droni` as **different apps**: the rename is not an in-place update.
-
 ## Project layout
 - `app/src/main/java/at/droni/protocol/ElfieProtocol.kt` — tested 11-byte encoder
 - `app/src/main/java/at/droni/net/DroneController.kt` — 40 Hz UDP flight link and safety interlocks
