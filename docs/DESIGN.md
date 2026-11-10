@@ -35,7 +35,7 @@ Run the same checks with an attached emulator:
 
 ```bash
 gradle connectedDebugAndroidTest
-adb pull /sdcard/Android/data/at.droni/files/screenshots
+adb pull /sdcard/Download/droni-ui
 ```
 
 For device review, check compact landscape sizes, larger font settings, camera

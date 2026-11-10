@@ -37,7 +37,7 @@ jobs:
           profile: pixel_2
           script: |
             gradle --no-daemon connectedDebugAndroidTest
-            adb pull /sdcard/Android/data/at.droni/files/screenshots ui-screenshots
+            adb pull /sdcard/Download/droni-ui ui-screenshots
       - uses: actions/upload-artifact@v4
         if: always()
         with:

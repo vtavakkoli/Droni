@@ -1,16 +1,14 @@
 package at.droni
 
-import android.graphics.Bitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /** Exercises offline navigation and settings persistence without connecting to any aircraft. */
 @RunWith(AndroidJUnit4::class)
@@ -58,9 +56,13 @@ class NavigationSmokeTest {
 
     private fun screenshot(name: String) {
         ui.waitForIdle()
-        val folder = File(ui.activity.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
-        File(folder, "$name.png").outputStream().use {
-            ui.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        // The test platform removes app-owned external files when uninstalling the APK.
+        // Shell-owned review output survives cleanup and includes native camera surfaces.
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        for (command in listOf("mkdir -p /sdcard/Download/droni-ui", "screencap -p /sdcard/Download/droni-ui/$name.png")) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).use {
+                it.readBytes()
+            }
         }
     }
 }
