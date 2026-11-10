@@ -3,9 +3,9 @@
 Written by Dr. Vahid Tavakkoli.
 
 ## Requirements
-- Android Studio with JDK 17 and Android SDK Platform 37
+- Android Studio with JDK 17 and Android SDK Platform 36
 - Gradle 9.5.0 and Android Gradle Plugin 9.3.1
-- Kotlin Compose Compiler 2.4.21
+- Kotlin Compose Compiler 2.4.21 and Compose BOM 2026.07.01 (compatible with API 36)
 - An Android 8.0+ phone with Wi-Fi
 
 The repo includes Gradle wrapper configuration but does not contain the binary
