@@ -29,7 +29,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import at.tavakkoli.droni.net.DroneController
 import at.tavakkoli.droni.protocol.ElfieProtocol
+import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.sign
 import kotlin.math.sqrt
 
 private val Navy = Color(0xFF0D1728)
@@ -54,7 +56,7 @@ class MainActivity : ComponentActivity() {
                     surface = Panel,
                     background = Navy,
                     onSurface = Pale,
-                    onBackground = Pale
+                    onBackground = Pale,
                 )
             ) {
                 FlightDeck(controller)
@@ -211,11 +213,11 @@ private fun FlightDeck(drone: DroneController) {
             Text("left/right • up/down", fontSize = 9.sp, color = Color.LightGray.copy(alpha = 0.7f))
         }
 
-        // Transparent Right Virtual Joystick (ROLL / PITCH)
+        // Transparent Right Virtual Joystick (ROLL / PITCH - moved 20dp left)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 24.dp, end = 24.dp),
+                .padding(bottom = 24.dp, end = 44.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("ROLL / PITCH", color = Pale.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -255,8 +257,12 @@ private fun CameraSurface(drone: DroneController, modifier: Modifier = Modifier)
                     override fun surfaceCreated(holder: SurfaceHolder) {
                         drone.video.setSurface(holder.surface)
                     }
-                    override fun surfaceChanged(holder: SurfaceHolder, format: Int,
-                        width: Int, height: Int) = Unit
+                    override fun surfaceChanged(
+                        holder: SurfaceHolder,
+                        format: Int,
+                        width: Int,
+                        height: Int
+                    ) = Unit
                     override fun surfaceDestroyed(holder: SurfaceHolder) {
                         drone.video.setSurface(null)
                     }
@@ -266,7 +272,7 @@ private fun CameraSurface(drone: DroneController, modifier: Modifier = Modifier)
     )
 }
 
-/** Two independent multi-touch surfaces; pointer loss resets the stick to zero. */
+/** Virtual joystick with 50%, 75%, 100% rate zones and soft snapping for precise flight control. */
 @Composable
 private fun VirtualJoystick(
     modifier: Modifier,
@@ -275,6 +281,17 @@ private fun VirtualJoystick(
 ) {
     var position by remember { mutableStateOf(Offset.Zero) }
     val currentOnMove by rememberUpdatedState(onMove)
+
+    fun snapToZone(value: Float): Float {
+        val s = sign(value)
+        return when (abs(value)) {
+            in 0.47f..0.53f -> s * 0.50f
+            in 0.72f..0.78f -> s * 0.75f
+            in 0.94f..1.00f -> s * 1.00f
+            else -> value
+        }
+    }
+
     val gesture = Modifier.pointerInput(enabled) {
         if (!enabled) {
             position = Offset.Zero
@@ -286,10 +303,16 @@ private fun VirtualJoystick(
             fun update(point: Offset) {
                 val r = min(size.width, size.height) * 0.41f
                 if (r <= 0f) return
-                val x = ((point.x - size.width / 2f) / r).coerceIn(-1f, 1f)
-                val y = ((size.height / 2f - point.y) / r).coerceIn(-1f, 1f)
-                val norm = sqrt(x * x + y * y).coerceAtLeast(1f)
-                position = Offset(x / norm, y / norm)
+                var rawX = ((point.x - size.width / 2f) / r).coerceIn(-1f, 1f)
+                var rawY = ((size.height / 2f - point.y) / r).coerceIn(-1f, 1f)
+                val norm = sqrt((rawX * rawX) + (rawY * rawY)).coerceAtLeast(1f)
+                rawX /= norm
+                rawY /= norm
+
+                val finalX = snapToZone(rawX)
+                val finalY = snapToZone(rawY)
+
+                position = Offset(finalX, finalY)
                 currentOnMove(position.x, position.y)
             }
             try {
@@ -307,22 +330,66 @@ private fun VirtualJoystick(
             }
         }
     }
-    Canvas(
-        modifier = modifier.aspectRatio(1f).then(gesture)
-            .background(Color(0x3017283F), CircleShape)
-            .border(1.5.dp, Color(0x90456581), CircleShape)
-    ) {
-        val radius = min(size.width, size.height) * 0.41f
-        drawCircle(Color(0x5020364E), radius, style = Stroke(2.dp.toPx()))
-        drawLine(Color(0x70456581), Offset(center.x - radius, center.y),
-            Offset(center.x + radius, center.y), 1.dp.toPx())
-        drawLine(Color(0x70456581), Offset(center.x, center.y - radius),
-            Offset(center.x, center.y + radius), 1.dp.toPx())
-        val knob = Offset(center.x + position.x * radius,
-            center.y - position.y * radius)
-        drawCircle(if (enabled) Accent.copy(alpha = 0.85f) else Color.DarkGray.copy(alpha = 0.5f), radius * 0.26f,
-            center = knob)
-        drawCircle(Color.White.copy(alpha = 0.5f), radius * 0.26f,
-            center = knob, style = Stroke(2.dp.toPx()))
+
+    Box(modifier = modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(gesture)
+                .background(Color(0x3017283F), CircleShape)
+                .border(1.5.dp, Color(0x90456581), CircleShape)
+        ) {
+            val radius = min(size.width, size.height) * 0.41f
+
+            // 50% Control Zone Ring (Precision hover/glide)
+            drawCircle(Color(0x50FFBF69), radius * 0.50f, style = Stroke(1.5.dp.toPx()))
+            // 75% Control Zone Ring (Medium speed)
+            drawCircle(Color(0x5040B8F6), radius * 0.75f, style = Stroke(1.5.dp.toPx()))
+            // 100% Control Zone Ring (Max speed)
+            drawCircle(Color(0x5020364E), radius, style = Stroke(2.dp.toPx()))
+
+            // Crosshair axes
+            drawLine(Color(0x60456581), Offset(center.x - radius, center.y),
+                Offset(center.x + radius, center.y), 1.dp.toPx())
+            drawLine(Color(0x60456581), Offset(center.x, center.y - radius),
+                Offset(center.x, center.y + radius), 1.dp.toPx())
+
+            // Knob representation with dynamic zone feedback color
+            val knob = Offset(
+                center.x + position.x * radius,
+                center.y - position.y * radius
+            )
+            val currentMagnitude = sqrt(position.x * position.x + position.y * position.y)
+            val knobColor = when {
+                !enabled -> Color.DarkGray.copy(alpha = 0.5f)
+                currentMagnitude >= 0.90f -> Danger.copy(alpha = 0.9f)
+                currentMagnitude >= 0.65f -> Accent.copy(alpha = 0.9f)
+                currentMagnitude >= 0.40f -> Warning.copy(alpha = 0.9f)
+                else -> Accent.copy(alpha = 0.75f)
+            }
+
+            drawCircle(knobColor, radius * 0.26f, center = knob)
+            drawCircle(Color.White.copy(alpha = 0.6f), radius * 0.26f, center = knob, style = Stroke(2.dp.toPx()))
+        }
+
+        // Active Zone Readout Overlay in Center
+        val mag = sqrt(position.x * position.x + position.y * position.y)
+        if (mag > 0.1f) {
+            val zoneText = when {
+                mag >= 0.90f -> "100%"
+                mag >= 0.65f -> "75%"
+                mag >= 0.40f -> "50%"
+                else -> "${(mag * 100).toInt()}%"
+            }
+            Text(
+                text = zoneText,
+                color = Color.White.copy(alpha = 0.9f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .background(Color(0xB00D1728), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            )
+        }
     }
 }
