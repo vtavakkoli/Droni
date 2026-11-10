@@ -13,7 +13,7 @@ Droni is an open-source native Android flight controller for the JJRC Elfie Wiâ€
 - Deterministic packet test vectors matching the Python regression tests
 
 ## Connect and fly safely
-1. Build with Android Studio (JDK 17+, Android SDK 37) and install on Android 8.0+ (API 26).
+1. Build with Android Studio (JDK 17+, Android SDK 36) and install on Android 8.0+ (API 26).
 2. Connect the phone manually to the **JJRC Elfie drone's Wiâ€‘Fi**, and choose **Stay connected** if Android warns that it has no internet.
 3. Launch Droni, keep the default host `172.16.10.1` unless your drone uses a different gateway, then tap **Connect**.
 4. Confirm both UDP transmission and video reception status; with **propellers removed**, test axes and action buttons first.
