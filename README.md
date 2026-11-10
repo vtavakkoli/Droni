@@ -20,11 +20,11 @@ Droni brings hands-on flight control, first-person video, camera recording, a dr
 
 | Screen | Capabilities | Status |
 | :-- | :-- | :-- |
-| **Splash + Home** | Branded splash screen, five-card main menu | Implemented |
-| **Drone Fly** | Original glass-style dual-joystick FPV layout, takeoff, land, motor stop, speed, headless, disarmed calibration, reversal | Implemented; physical validation needed |
+| **Splash + Home** | Branded splash, refined home with quick-access cards | Implemented |
+| **Drone Fly** | Transparent dual-joystick FPV layout, takeoff, land, motor stop, speed, headless, disarmed calibration, reversal | Implemented; physical validation needed |
 | **Draw Path** | Finger-drawn route, constrained preview, animated simulation | Implemented |
 | **Experimental Path Trial** | Level-calibration request → takeoff request → short bounded screen-direction commands → landing request, with abort | **OPEN LOOP. Not real path following; safety/landing unverified** |
-| **Recordings** | Start/stop H.264 MP4 capture from flight deck; local Android Movies/Droni library | Implemented; verify with real camera |
+| **Recordings** | MP4 capture, asynchronous video library, thumbnails, play and share | Implemented; verify with real camera |
 | **Settings** | Persistent Wi-Fi gateway, default speed 0/1/2, optional auto-calibration before manual takeoff, framing grid | Implemented |
 | **About** | Project credits, copyright, source and license | Implemented |
 
@@ -45,6 +45,13 @@ A drawn screen line cannot be translated to meters without pose/velocity feedbac
 - **JUnit + GitHub Actions** — protocol, H.264 parser and path-planner regression tests
 
 No unnecessary trackers, location collection, accounts, or external cloud services.
+
+### Interface
+
+A shared native design system brings consistent typography, custom icons, rounded
+surfaces and clear navigation to every screen. The flight deck keeps the camera
+visible through its glass overlays. Recordings include local thumbnails, playback
+and sharing. See [interface and screen review](docs/DESIGN.md) for details.
 
 ## Build and install
 

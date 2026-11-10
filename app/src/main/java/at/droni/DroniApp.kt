@@ -1,57 +1,48 @@
 package at.droni
 
-import android.content.ContentUris
-import android.content.Intent
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.core.content.FileProvider
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import at.droni.mission.PathPlanner
 import at.droni.mission.PathPoint
 import at.droni.net.DroneController
 import at.droni.settings.DroniSettings
+import at.droni.ui.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import java.io.File
-import kotlin.math.max
 
-private val Background = Color(0xFF091423)
-private val Surface = Color(0xFF14283D)
-private val Cyan = Color(0xFF4ACBFF)
-private val Mint = Color(0xFF5EE7D2)
-private val White = Color(0xFFF0F8FF)
-private val Muted = Color(0xFFABC4D7)
-private val Alert = Color(0xFFFFC377)
+private val Background = DroniColors.Background
+private val Surface = DroniColors.Surface
+private val Cyan = DroniColors.Cyan
+private val Mint = DroniColors.Mint
+private val White = DroniColors.Text
+private val Muted = DroniColors.Muted
+private val Alert = DroniColors.Amber
 
-/** Root menu and application pages; manual FPV flight deck stays in MainActivity.kt. */
+/** Navigation and persisted preferences. Hardware command behavior lives in the controller. */
 @Composable
 fun DroniApp(drone: DroneController) {
     val context = LocalContext.current
@@ -61,8 +52,8 @@ fun DroniApp(drone: DroneController) {
     var showGrid by remember { mutableStateOf(settings.gridOverlay) }
     var defaultSpeed by remember { mutableIntStateOf(settings.defaultDroneSpeed) }
     var autoCalibration by remember { mutableStateOf(settings.autoCalibrationBeforeTakeoff) }
-    LaunchedEffect(defaultSpeed) { drone.setDefaultSpeedMode(defaultSpeed) }
     var leaveFlightConfirm by remember { mutableStateOf(false) }
+    LaunchedEffect(defaultSpeed) { drone.setDefaultSpeedMode(defaultSpeed) }
 
     fun navigateHome() {
         if (page == "fly" && drone.takeoffRequested) {
@@ -74,245 +65,35 @@ fun DroniApp(drone: DroneController) {
         }
     }
     BackHandler(page != "home") { navigateHome() }
-
     if (leaveFlightConfirm) {
         AlertDialog(
             onDismissRequest = { leaveFlightConfirm = false },
             title = { Text("Flight still active") },
-            text = { Text("Leaving the controls hides live video. Droni can request landing, " +
-                "but there is no flight acknowledgement. Remain in control until safely landed.") },
+            text = { Text("Leaving the controls hides live video. A landing request cannot confirm touchdown. Stay in control until safely landed.") },
             confirmButton = {
                 TextButton(onClick = {
                     drone.land()
                     leaveFlightConfirm = false
                     page = "home"
-                }) { Text("Request LAND & leave") }
+                }) { Text("Request land & leave") }
             },
-            dismissButton = {
-                TextButton(onClick = { leaveFlightConfirm = false }) { Text("Stay in flight deck") }
-            }
+            dismissButton = { TextButton(onClick = { leaveFlightConfirm = false }) { Text("Stay in flight deck") } }
         )
     }
-
     when (page) {
-        "fly" -> FlightDeck(
-            drone = drone, host = host,
+        "fly" -> FlightDeck(drone, host,
             onHostChange = { host = it; settings.droneHost = it },
-            showGrid = showGrid,
-            autoCalibrationBeforeTakeoff = autoCalibration
-        )
-        "settings" -> PageFrame("SETTINGS", "Personalize your flight deck", ::navigateHome) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("CONNECTION", color = Mint, fontWeight = FontWeight.Bold)
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = { host = it.take(32); settings.droneHost = host },
-                    label = { Text("Drone IPv4 / Wi-Fi gateway") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !drone.connected,
-                    supportingText = { Text("Default 172.16.10.1 · UDP 8080 / TCP video 8888") }
-                )
-                HorizontalDivider(color = Muted.copy(alpha = .18f))
-                Text("FLIGHT DECK", color = Mint, fontWeight = FontWeight.Bold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Camera grid overlay", color = White)
-                        Text("Visual composition guide only; not drone positioning",
-                            fontSize = 12.sp, color = Muted)
-                    }
-                    Switch(checked = showGrid, onCheckedChange = {
-                        showGrid = it; settings.gridOverlay = it
-                    })
-                }
-                Text("Default drone speed", color = White, fontWeight = FontWeight.SemiBold)
-                Text("Applied on start and after disconnect. You can change speed during flight.",
-                    color = Muted, fontSize = 12.sp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    for (mode in 0..2) {
-                        OutlinedButton(
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                defaultSpeed = mode
-                                settings.defaultDroneSpeed = mode
-                                drone.setDefaultSpeedMode(mode)
-                            },
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp, if (defaultSpeed == mode) Mint else Muted.copy(alpha = .35f)
-                            ),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = if (defaultSpeed == mode)
-                                    Cyan.copy(alpha = .20f) else Color.Transparent,
-                                contentColor = White
-                            )
-                        ) {
-                            Text("Speed $mode",
-                                fontWeight = if (defaultSpeed == mode)
-                                    FontWeight.Bold else FontWeight.Normal)
-                        }
-                    }
-                }
-                HorizontalDivider(color = Muted.copy(alpha = .18f))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Auto-calibrate before takeoff", color = White)
-                        Text("When enabled, request calibration while disarmed, wait, then " +
-                            "request takeoff. The drone must be level and stationary. " +
-                            "Calibration is not acknowledged.",
-                            fontSize = 12.sp, color = Muted)
-                    }
-                    Switch(checked = autoCalibration, onCheckedChange = {
-                        autoCalibration = it
-                        settings.autoCalibrationBeforeTakeoff = it
-                    })
-                }
-            }
-        }
+            showGrid = showGrid, autoCalibrationBeforeTakeoff = autoCalibration)
+        "settings" -> SettingsScreen(host, drone.connected, showGrid, defaultSpeed, autoCalibration,
+            onHostChange = { host = it.take(32); settings.droneHost = host },
+            onGridChange = { showGrid = it; settings.gridOverlay = it },
+            onSpeedChange = { defaultSpeed = it; settings.defaultDroneSpeed = it; drone.setDefaultSpeedMode(it) },
+            onCalibrationChange = { autoCalibration = it; settings.autoCalibrationBeforeTakeoff = it },
+            onBack = ::navigateHome)
         "path" -> PathScreen(drone, ::navigateHome)
-        "movies" -> RecordingsScreen(::navigateHome)
-        "about" -> PageFrame("ABOUT DRONI", "An open-source JJRC Elfie companion", ::navigateHome) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                DroneMark(Modifier.size(95.dp))
-                Text("DRONI", fontSize = 39.sp, fontWeight = FontWeight.Black,
-                    letterSpacing = 3.sp, color = White)
-                Text("JJRC Elfie Android Flight Controller", color = Muted)
-                Text("Version 0.2.0", color = Mint)
-                Text("Designed and developed by Dr. Vahid Tavakkoli",
-                    color = White, fontWeight = FontWeight.SemiBold)
-                Text("Copyright © 2026 Dr. Vahid Tavakkoli. All rights reserved.",
-                    color = White, fontSize = 13.sp)
-                Text("Source code released under the MIT License.",
-                    color = Muted, fontSize = 12.sp)
-                Text("github.com/vtavakkoli/Droni", color = Cyan,
-                    modifier = Modifier.clickable {
-                        context.startActivity(Intent(Intent.ACTION_VIEW,
-                            android.net.Uri.parse("https://github.com/vtavakkoli/Droni")))
-                    })
-                Text("Flight commands are not acknowledged and this experimental software " +
-                    "is not a certified flight-control system.",
-                    color = Alert, fontSize = 12.sp)
-            }
-        }
-        else -> HomeScreen(
-            connected = drone.connected,
-            onOpen = { page = it }
-        )
-    }
-}
-
-@Composable
-private fun HomeScreen(connected: Boolean, onOpen: (String) -> Unit) {
-    Box(Modifier.fillMaxSize().background(Brush.linearGradient(
-        listOf(Background, Color(0xFF102B41), Background)
-    ))) {
-        Row(
-            modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(26.dp),
-            horizontalArrangement = Arrangement.spacedBy(25.dp)
-        ) {
-            Column(
-                modifier = Modifier.weight(.96f).fillMaxHeight(),
-                verticalArrangement = Arrangement.Center
-            ) {
-                DroneMark(Modifier.size(100.dp))
-                Spacer(Modifier.height(12.dp))
-                Text("DRONI", fontSize = 49.sp, fontWeight = FontWeight.Black,
-                    letterSpacing = 5.sp, color = White)
-                Text("JJRC ELFIE  /  FLIGHT EXPERIENCE", fontSize = 13.sp,
-                    color = Mint, letterSpacing = 2.sp)
-                Spacer(Modifier.height(14.dp))
-                Text("Fly. Explore. Capture.", fontSize = 24.sp, color = White,
-                    fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text("Your native Android flight deck, route sketchpad and flight video library.",
-                    color = Muted, fontSize = 14.sp, lineHeight = 20.sp)
-                Spacer(Modifier.height(24.dp))
-                Text(if (connected) "●  Wi-Fi link active · UDP commands unacknowledged"
-                    else "●  Ready to connect · join drone Wi-Fi first",
-                    color = if (connected) Mint else Alert, fontSize = 12.sp)
-                Spacer(Modifier.height(8.dp))
-                Text("© 2026 Dr. Vahid Tavakkoli", color = Muted, fontSize = 11.sp)
-            }
-            Column(
-                modifier = Modifier.weight(1.06f).fillMaxHeight()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                MenuCard("01", "DRONE FLY", "Live video + joystick control", "fly", onOpen,
-                    highlight = true)
-                MenuCard("02", "DRAW PATH", "Sketch, simulate, experimental trial", "path", onOpen)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.weight(1f)) {
-                        MenuCard("03", "SETTINGS", "App preferences", "settings", onOpen)
-                    }
-                    Box(Modifier.weight(1f)) {
-                        MenuCard("04", "RECORDINGS", "Saved MP4 videos", "movies", onOpen)
-                    }
-                }
-                MenuCard("05", "ABOUT DRONI", "Project & copyright", "about", onOpen)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MenuCard(number: String, title: String, subtitle: String,
-    destination: String, onOpen: (String) -> Unit, highlight: Boolean = false
-) {
-    val corner = RoundedCornerShape(17.dp)
-    Column(Modifier.fillMaxWidth()
-        .background(if (highlight) Color(0xFF18435A) else Surface, corner)
-        .border(1.dp, if (highlight) Cyan.copy(alpha = .6f)
-            else Muted.copy(alpha = .13f), corner)
-        .clickable { onOpen(destination) }
-        .padding(horizontal = 20.dp, vertical = 17.dp)
-    ) {
-        Text(number, fontSize = 11.sp, color = Mint, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(3.dp))
-        Text(title, fontSize = 19.sp, color = White, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(3.dp))
-        Text(subtitle, color = Muted, fontSize = 12.sp, maxLines = 2)
-    }
-}
-
-@Composable
-private fun DroneMark(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val center = this.center
-        val r = size.minDimension / 4.0f
-        val rotorRadius = r * .45f
-        for (dx in listOf(-1f, 1f)) for (dy in listOf(-1f, 1f)) {
-            val c = Offset(center.x + dx * r * 1.15f, center.y + dy * r * 1.15f)
-            drawLine(Muted, center, c, 7.dp.toPx())
-            drawCircle(Mint, rotorRadius, c, style = Stroke(4.dp.toPx()))
-            drawCircle(Cyan.copy(alpha = .2f), rotorRadius * .6f, c)
-        }
-        drawCircle(White, r * .75f, center)
-        drawCircle(Cyan, r * .43f, center)
-        drawCircle(Background, r * .2f, center)
-    }
-}
-
-@Composable
-private fun PageFrame(title: String, subtitle: String, onBack: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    Column(Modifier.fillMaxSize().background(Background)
-        .safeDrawingPadding().padding(horizontal = 24.dp, vertical = 15.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹  MENU", color = Cyan) }
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text(title, color = White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = Muted, fontSize = 12.sp)
-            }
-        }
-        HorizontalDivider(color = Muted.copy(alpha = .16f))
-        Box(Modifier.fillMaxSize().padding(horizontal = 10.dp)) { content() }
+        "movies" -> RecordingsScreen(::navigateHome, onOpenFlight = { page = "fly" })
+        "about" -> AboutScreen(::navigateHome)
+        else -> HomeScreen(drone.connected, onOpen = { page = it })
     }
 }
 
@@ -320,7 +101,7 @@ private fun PageFrame(title: String, subtitle: String, onBack: () -> Unit,
 @Composable
 private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
     val points = remember { mutableStateListOf<PathPoint>() }
-    val plan = remember(points.size) { PathPlanner.plan(points.toList()) }
+    val plan by remember { derivedStateOf { PathPlanner.plan(points.toList()) } }
     val scope = rememberCoroutineScope()
     var simulation by remember { mutableStateOf<Job?>(null) }
     var mission by remember { mutableStateOf<Job?>(null) }
@@ -357,6 +138,9 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                 "Keep direct visual control, test propeller-off first, and abort if drifting.") },
             confirmButton = { TextButton(onClick = {
                 confirmTrial = false
+                simulation?.cancel()
+                simulation = null
+                progress = 0f
                 val steps = plan.toList()
                 mission = scope.launch {
                     var flightRequested = false
@@ -396,19 +180,21 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
         )
     }
 
-    PageFrame("DRAW PATH", "Screen-space path · simulator + supervised experimental commands", {
+    PageFrame("Draw path", "Sketch a route. Preview it before you fly.", {
         if (isMission) abortMission()
         onBack()
     }) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
             Box(Modifier.weight(1f).fillMaxHeight()
-                .background(Surface, RoundedCornerShape(14.dp))
-                .border(1.dp, Cyan.copy(alpha = .3f), RoundedCornerShape(14.dp))
+                .background(Surface, RoundedCornerShape(20.dp))
+                .border(1.dp, DroniColors.Outline, RoundedCornerShape(20.dp))
             ) {
-                Canvas(Modifier.fillMaxSize().pointerInput(isMission) {
+                Canvas(Modifier.fillMaxSize().semantics { contentDescription = "Route drawing canvas" }.pointerInput(isMission) {
                     if (isMission) return@pointerInput
                     detectDragGestures(
                         onDragStart = { p ->
+                            simulation?.cancel()
+                            simulation = null
                             points.clear(); progress = 0f
                             points.add(PathPoint(
                                 (p.x / size.width).coerceIn(0f, 1f),
@@ -436,7 +222,8 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                             moveTo(points[0].x * size.width, points[0].y * size.height)
                             for (p in points.drop(1)) lineTo(p.x * size.width, p.y * size.height)
                         }
-                        drawPath(path, Cyan, style = Stroke(4.dp.toPx()))
+                        drawPath(path, Cyan.copy(alpha = .10f), style = Stroke(14.dp.toPx()))
+                        drawPath(path, Cyan, style = Stroke(3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
                         val first = points.first()
                         val last = points.last()
                         drawCircle(Mint, 8.dp.toPx(),
@@ -450,23 +237,38 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                             Offset(marker.x * size.width, marker.y * size.height))
                     }
                 }
-                if (points.isEmpty()) Text("DRAW YOUR ROUTE HERE",
-                    color = Muted, fontSize = 16.sp,
-                    modifier = Modifier.align(Alignment.Center))
-                Text("START ● mint    END ● amber    MARKER ● white",
-                    color = Muted, fontSize = 10.sp,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(12.dp))
+                Text("ROUTE CANVAS", color = Muted, letterSpacing = 1.5.sp,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.align(Alignment.TopStart).padding(18.dp))
+                if (points.isEmpty()) Column(Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    DroniIcon(DroniSymbol.Route, Modifier.size(34.dp), Mint)
+                    Spacer(Modifier.height(14.dp))
+                    Text("Every route starts with a line", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Draw one continuous path with your finger", color = Muted,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.align(Alignment.BottomStart).padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("● Start", color = Mint, style = MaterialTheme.typography.labelSmall)
+                    Text("● Finish", color = Alert, style = MaterialTheme.typography.labelSmall)
+                    Text("● Preview", color = White, style = MaterialTheme.typography.labelSmall)
+                }
             }
-            Column(Modifier.widthIn(min = 220.dp, max = 305.dp).fillMaxHeight()
-                .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Column(Modifier.weight(.72f).fillMaxHeight()
+                .background(Surface, RoundedCornerShape(20.dp))
+                .border(1.dp, DroniColors.Outline, RoundedCornerShape(20.dp))
+                .verticalScroll(rememberScrollState()).padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("MISSION PREVIEW", color = Mint, fontWeight = FontWeight.Bold)
-                Text("${points.size} drawn points · ${plan.size} bounded commands",
+                StatusPill(if (isMission) "Trial in progress" else "Offline preview", isMission)
+                Text("Mission preview", style = MaterialTheme.typography.titleLarge)
+                Text("${points.size} points · ${plan.size} command steps",
                     color = White, fontSize = 12.sp)
                 Text("Maximum deflection 16% · movement ≤ 4.32 s",
                     fontSize = 11.sp, color = Muted)
-                Text("Drawing distance is NOT meters; no position, speed or altitude telemetry.",
+                Text("A screen sketch, not a measured flight route. Position and altitude are not available.",
                     fontSize = 12.sp, color = Alert, lineHeight = 16.sp)
                 Button(enabled = plan.isNotEmpty() && !isMission, onClick = {
                     simulation?.cancel()
@@ -476,22 +278,28 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                             delay(32)
                         }
                         message = "Simulation complete; no packets sent."
+                        simulation = null
                     }
-                }, modifier = Modifier.fillMaxWidth()) { Text("SIMULATE PATH") }
+                }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                    DroniIcon(DroniSymbol.Play, Modifier.size(16.dp), if (plan.isNotEmpty()) Background else Muted)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Simulate path")
+                }
                 OutlinedButton(
                     enabled = !isMission && points.isNotEmpty(),
                     onClick = {
                         simulation?.cancel()
+                        simulation = null
                         points.clear()
                         progress = 0f
                         message = "Drawing cleared."
                     }, modifier = Modifier.fillMaxWidth()
-                ) { Text("CLEAR DRAWING") }
+                ) { Text("Clear drawing") }
                 OutlinedButton(enabled = drone.connected && !drone.takeoffRequested &&
                     !isMission, onClick = {
                     drone.calibrate()
                     message = "Calibration requested; not sensor-verified."
-                }, modifier = Modifier.fillMaxWidth()) { Text("CALIBRATE (LEVEL)") }
+                }, modifier = Modifier.fillMaxWidth()) { Text("Calibrate on level surface", fontSize = 12.sp) }
                 if (isMission) {
                     Button(onClick = ::abortMission,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC94959)),
@@ -516,95 +324,12 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF7383))
                     ) { Text("EMERGENCY MOTOR STOP", fontSize = 11.sp) }
                 }
+                if (progress > 0f) LinearProgressIndicator(progress = { progress },
+                    modifier = Modifier.fillMaxWidth(), color = Mint, trackColor = DroniColors.Raised)
                 Text(message, fontSize = 11.sp, color = White)
                 Text("Leaving this screen cancels the trial and requests landing. " +
                     "Neither a land request nor completion verifies physical touchdown.",
                     fontSize = 11.sp, color = Muted)
-            }
-        }
-    }
-}
-
-private data class MovieItem(val uri: android.net.Uri, val name: String, val size: Long)
-@Composable
-private fun RecordingsScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    var refresh by remember { mutableIntStateOf(0) }
-    val movies = remember(refresh) {
-        val result = mutableListOf<MovieItem>()
-        if (Build.VERSION.SDK_INT >= 29) {
-            val columns = arrayOf(MediaStore.Video.Media._ID,
-                MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE)
-            try {
-                context.contentResolver.query(
-                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                    columns,
-                    MediaStore.Video.Media.RELATIVE_PATH + " LIKE ?",
-                    arrayOf("%/Droni/%"),
-                    MediaStore.Video.Media.DATE_ADDED + " DESC"
-                )?.use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val id = cursor.getLong(0)
-                        result += MovieItem(
-                            ContentUris.withAppendedId(
-                                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id),
-                            cursor.getString(1) ?: "Droni movie",
-                            cursor.getLong(2)
-                        )
-                    }
-                }
-            } catch (_: Exception) { }
-        } else {
-            val folder = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "Droni")
-            folder.listFiles { file -> file.extension.equals("mp4", true) }
-                ?.sortedByDescending { it.lastModified() }
-                ?.forEach { result += MovieItem(
-                    FileProvider.getUriForFile(context,
-                        "${context.packageName}.fileprovider", it),
-                    it.name, it.length()
-                ) }
-        }
-        result
-    }
-    PageFrame("RECORDINGS", "Movies captured from the JJRC Elfie camera", onBack) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("LOCAL MP4 MOVIES  ·  ${movies.size}", color = Mint,
-                    modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                OutlinedButton(onClick = { refresh++ }) { Text("Refresh") }
-            }
-            if (movies.isEmpty()) {
-                Text("No MP4 recordings yet. Open Drone Fly, connect the camera, " +
-                    "then tap REC to save a movie.", color = Muted)
-            } else {
-                Column(Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    movies.forEach { movie ->
-                        Row(Modifier.fillMaxWidth()
-                            .background(Surface, RoundedCornerShape(10.dp))
-                            .clickable {
-                                try {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(movie.uri, "video/mp4")
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    })
-                                } catch (_: Exception) {}
-                            }
-                            .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("▶", color = Cyan, fontSize = 18.sp)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(movie.name, color = White, fontWeight = FontWeight.Bold,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${movie.size / 1024L} KB · local device",
-                                    color = Muted, fontSize = 11.sp)
-                            }
-                            Text("PLAY", color = Mint)
-                        }
-                    }
-                }
             }
         }
     }
