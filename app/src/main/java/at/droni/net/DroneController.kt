@@ -1,4 +1,4 @@
-package at.tavakkoli.droni.net
+package at.droni.net
 
 import android.content.Context
 import android.net.ConnectivityManager
@@ -11,8 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import at.tavakkoli.droni.protocol.ElfieProtocol
-import at.tavakkoli.droni.video.ElfieVideo
+import at.droni.protocol.ElfieProtocol
+import at.droni.video.ElfieVideo
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address

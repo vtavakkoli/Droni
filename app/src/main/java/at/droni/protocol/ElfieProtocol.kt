@@ -1,4 +1,4 @@
-package at.tavakkoli.droni.protocol
+package at.droni.protocol
 
 import kotlin.math.roundToInt
 

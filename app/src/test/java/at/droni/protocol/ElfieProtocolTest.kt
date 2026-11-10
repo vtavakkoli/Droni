@@ -1,4 +1,4 @@
-package at.tavakkoli.droni.protocol
+package at.droni.protocol
 
 import org.junit.Assert.*
 import org.junit.Test
