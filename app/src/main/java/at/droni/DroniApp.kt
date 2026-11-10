@@ -348,7 +348,7 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                         message = "Mission interrupted: ${e.message ?: "cancelled"}"
                     } finally {
                         drone.neutral()
-                        if (flightRequested && drone.connected) drone.land()
+                        if (flightRequested && drone.connected && drone.takeoffRequested) drone.land()
                         mission = null
                     }
                 }
@@ -467,6 +467,17 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8C5F22)),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("EXPERIMENTAL PATH TRIAL", fontSize = 12.sp) }
+                }
+                if (isMission) {
+                    OutlinedButton(
+                        onClick = {
+                            mission?.cancel()
+                            drone.emergencyStop()
+                            message = "EMERGENCY MOTOR STOP requested — aircraft may fall."
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF7383))
+                    ) { Text("EMERGENCY MOTOR STOP", fontSize = 11.sp) }
                 }
                 Text(message, fontSize = 11.sp, color = White)
                 Text("Leaving this screen cancels the trial and requests landing. " +
