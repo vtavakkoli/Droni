@@ -62,7 +62,9 @@ class MainActivity : ComponentActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             DroniTheme {
-                DroniApp(controller)
+                Surface(Modifier.fillMaxSize(), color = Navy, contentColor = Pale) {
+                    DroniApp(controller)
+                }
             }
         }
     }

@@ -56,6 +56,8 @@ class NavigationSmokeTest {
 
     private fun screenshot(name: String) {
         ui.waitForIdle()
+        // Allow the system compositor to present the frame observed by Compose.
+        android.os.SystemClock.sleep(300)
         // The test platform removes app-owned external files when uninstalling the APK.
         // Shell-owned review output survives cleanup and includes native camera surfaces.
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
