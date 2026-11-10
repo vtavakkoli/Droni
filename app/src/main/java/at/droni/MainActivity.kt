@@ -1,4 +1,4 @@
-package at.tavakkoli.droni
+package at.droni
 
 import android.os.Bundle
 import android.view.SurfaceHolder
@@ -27,8 +27,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import at.tavakkoli.droni.net.DroneController
-import at.tavakkoli.droni.protocol.ElfieProtocol
+import at.droni.net.DroneController
+import at.droni.protocol.ElfieProtocol
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sign

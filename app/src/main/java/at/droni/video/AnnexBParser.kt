@@ -1,4 +1,4 @@
-package at.tavakkoli.droni.video
+package at.droni.video
 
 /** Bounded parser for H.264 Annex-B NAL units over arbitrary TCP chunk boundaries. */
 class AnnexBParser(

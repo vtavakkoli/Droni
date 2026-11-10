@@ -1,4 +1,4 @@
-package at.tavakkoli.droni.video
+package at.droni.video
 
 import org.junit.Assert.*
 import org.junit.Test

@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "at.tavakkoli.droni"
+    namespace = "at.droni"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "at.tavakkoli.droni"
+        applicationId = "at.droni"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

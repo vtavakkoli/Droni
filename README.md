@@ -30,6 +30,9 @@ There are no reliable IMU/barometer readings exposed by this controller. The des
 ## Stack
 Kotlin, Jetpack Compose + Material 3 (stable BOM), AndroidX Activity, Android `ConnectivityManager` / `Network`, Java/Android sockets and Android hardware `MediaCodec`. No archived IJKPlayer or native binary dependencies.
 
+## Android application ID
+The Kotlin source package, Gradle namespace, and Android application ID are all `at.droni`. This changes the Android application identity, so an installed previous version will remain a separate app until manually uninstalled. The launcher uses an adaptive quadcopter icon.
+
 ## Build
 ```bash
 git clone https://github.com/vtavakkoli/Droni.git

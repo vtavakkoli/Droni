@@ -1,4 +1,4 @@
-package at.tavakkoli.droni.video
+package at.droni.video
 
 import android.media.MediaCodec
 import android.media.MediaFormat
