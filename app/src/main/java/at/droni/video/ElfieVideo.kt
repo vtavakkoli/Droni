@@ -122,8 +122,8 @@ class ElfieVideo(private val status: (String) -> Unit) {
 
                 if (codec == null && sps != null && pps != null) {
                     val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 640, 480)
-                    format.setByteBuffer("csd-0", ByteBuffer.wrap(ensure4ByteStartCode(sps!!)))
-                    format.setByteBuffer("csd-1", ByteBuffer.wrap(ensure4ByteStartCode(pps!!)))
+                    format.setByteBuffer("csd-0", ByteBuffer.wrap(ensure4ByteStartCode(sps)))
+                    format.setByteBuffer("csd-1", ByteBuffer.wrap(ensure4ByteStartCode(pps)))
                     if (Build.VERSION.SDK_INT >= 30) format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                     val decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
                     try {
