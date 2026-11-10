@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -18,6 +19,7 @@ import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -60,12 +62,32 @@ class DroneController(private val context: Context) {
 
     val video = ElfieVideo { text -> ui.post { videoStatus = text } }
 
-    /** Wifi network selection is essential when Elfie Wi-Fi has no internet access. */
+    /** Select Wi-Fi even if Android routes default internet traffic through mobile data. */
     private fun wifiNetwork(): Network? {
         val manager = context.getSystemService(ConnectivityManager::class.java)
-        return manager.allNetworks.firstOrNull { network ->
-            manager.getNetworkCapabilities(network)
-                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        manager.activeNetwork?.let { network ->
+            if (manager.getNetworkCapabilities(network)
+                    ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) return network
+        }
+
+        // The drone's Wi-Fi has no internet; a default-network-only query can miss it.
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        val selected = AtomicReference<Network?>()
+        val available = CountDownLatch(1)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (selected.compareAndSet(null, network)) available.countDown()
+            }
+        }
+        manager.registerNetworkCallback(request, callback)
+        try {
+            available.await(2, TimeUnit.SECONDS)
+            return selected.get()
+        } finally {
+            manager.unregisterNetworkCallback(callback)
         }
     }
 
