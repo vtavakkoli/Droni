@@ -23,7 +23,7 @@ Droni is an open-source native Android flight controller for the JJRC Elfie Wi�
 The UI's “UDP sending” status describes **local transmission only**: the drone supplies no acknowledged flight-control/altitude/battery telemetry to this app. Never infer physical flight state from it. Do not use indoors near people or obstacles.
 
 ## Protocol
-Control: UDP host `172.16.10.1:8080`, **11 bytes every 25 ms**. Video: TCP `172.16.10.1:8888`, original 100-byte request, 106-byte server greeting, then raw H.264 NAL stream. Hardware decoder = Android `MediaCodec` (not a generic HTTP/RTSP player).
+Control: UDP host `172.16.10.1:8080`, **11 bytes every 25 ms**. Video: TCP `172.16.10.1:8888`, original 106-byte request, 106-byte server greeting, then raw H.264 NAL stream. Hardware decoder = Android `MediaCodec` (not a generic HTTP/RTSP player).
 
 There are no reliable IMU/barometer readings exposed by this controller. The desktop Python project's experimental camera-assisted visual hold is deliberately **not enabled on Android**: its feedback gains are not validated on real hardware.
 
