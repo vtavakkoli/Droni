@@ -130,10 +130,13 @@ class DroneController(private val context: Context) {
                     commandExpires = 0L
                     lastErrorMsg = null
                     transmitting = true
-                    worker = Executors.newSingleThreadScheduledExecutor { task ->
+                    val scheduler = Executors.newSingleThreadScheduledExecutor { task ->
                         Thread(task, "Droni-UDP-40Hz").apply { isDaemon = true }
                     }
-                    worker!!.scheduleAtFixedRate(::sendTick, 0, ElfieProtocol.PERIOD_MS,
+                    worker = scheduler
+                    // Fixed delay prevents a backlog of rapid control packets after Android
+                    // pauses or caches the process; resume with one tick at a time.
+                    scheduler.scheduleWithFixedDelay(::sendTick, 0, ElfieProtocol.PERIOD_MS,
                         TimeUnit.MILLISECONDS)
                 }
                 ui.post {
