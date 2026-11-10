@@ -48,10 +48,15 @@ class MainActivity : ComponentActivity() {
         controller = DroneController(applicationContext)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme(
-                primary = Accent, surface = Panel, background = Navy,
-                onSurface = Pale, onBackground = Pale
-            )) {
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = Accent,
+                    surface = Panel,
+                    background = Navy,
+                    onSurface = Pale,
+                    onBackground = Pale
+                )
+            ) {
                 FlightDeck(controller)
             }
         }
@@ -72,143 +77,170 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun FlightDeck(drone: DroneController) {
     var host by remember { mutableStateOf(ElfieProtocol.DEFAULT_HOST) }
-    Column(
-        modifier = Modifier.fillMaxSize().background(Navy).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp)
-    ) {
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        // Full screen FPV live video stream background
+        CameraSurface(drone, Modifier.fillMaxSize())
+
+        if (!drone.connected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Connect to drone Wi-Fi for live video stream",
+                    color = Color.LightGray,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        // Top Translucent Header Bar
         Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .background(Panel.copy(alpha = 0.85f))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Column {
-                Text("DRONI", fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Accent)
-                Text("JJRC ELFIE  •  by Dr. Vahid Tavakkoli",
-                    fontSize = 10.sp, color = Color.LightGray)
+                Text("DRONI", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Accent)
+                Text("JJRC ELFIE", fontSize = 9.sp, color = Color.LightGray)
             }
-            Spacer(Modifier.weight(1f))
-            Text("Drone IPv4:", fontSize = 12.sp)
+            Text("•", color = Color.Gray, fontSize = 12.sp)
+            Column(Modifier.weight(1f)) {
+                Text("FPV TCP 8888 • H.264", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(drone.videoStatus, color = Accent, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text("Drone IPv4:", fontSize = 11.sp, color = Pale)
             BasicTextField(
                 value = host, onValueChange = { host = it.take(32) },
                 singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
-                modifier = Modifier.width(135.dp).background(Panel, RoundedCornerShape(6.dp))
-                    .padding(8.dp),
+                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 13.sp),
+                modifier = Modifier.width(115.dp).background(Navy.copy(alpha = 0.8f), RoundedCornerShape(6.dp)).padding(6.dp),
                 enabled = !drone.connected
             )
             if (drone.connected) {
-                OutlinedButton(onClick = { drone.disconnect() }) { Text("Disconnect") }
+                OutlinedButton(
+                    onClick = { drone.disconnect() },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) { Text("Disconnect", fontSize = 11.sp) }
             } else {
-                Button(onClick = { drone.connect(host) }) { Text("Connect") }
+                Button(
+                    onClick = { drone.connect(host) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) { Text("Connect", fontSize = 11.sp) }
             }
         }
 
-        Row(
-            Modifier.fillMaxWidth().weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        // Action Controls Panel (Translucent Overlay, Top Center below Header)
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 56.dp)
+                .widthIn(max = 440.dp)
+                .background(Panel.copy(alpha = 0.75f), RoundedCornerShape(10.dp))
+                .padding(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
-                modifier = Modifier.weight(1f).fillMaxHeight()
-                    .background(Color.Black, RoundedCornerShape(14.dp))
-            ) {
-                CameraSurface(drone, Modifier.fillMaxSize())
-                Column(Modifier.align(Alignment.TopStart).padding(12.dp)) {
-                    Text("FPV  •  TCP 8888  •  H.264", color = Color.White,
-                        fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                    Text(drone.videoStatus, color = Accent, fontSize = 11.sp,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                if (!drone.connected) {
-                    Text("Connect to drone Wi-Fi for live video",
-                        modifier = Modifier.align(Alignment.Center).padding(15.dp),
-                        color = Color.LightGray, fontSize = 13.sp)
-                }
-                Text(
-                    "No verified battery, GPS, obstacle or altitude telemetry",
-                    modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
-                    color = Warning, fontSize = 10.sp
-                )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = drone.connected && !drone.takeoffRequested,
+                    onClick = drone::takeoff,
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text("Take off", fontSize = 10.sp) }
+                Button(
+                    modifier = Modifier.weight(1f), enabled = drone.connected,
+                    onClick = drone::land,
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text("Land", fontSize = 10.sp) }
+                Button(
+                    modifier = Modifier.weight(1.2f), enabled = drone.connected,
+                    onClick = drone::emergencyStop,
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger),
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text("MOTOR STOP", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold) }
             }
-
-            Column(
-                modifier = Modifier.width(366.dp).fillMaxHeight()
-                    .background(Panel, RoundedCornerShape(14.dp)).padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("YAW / ALTITUDE", color = Pale, fontSize = 11.sp)
-                        VirtualJoystick(Modifier.fillMaxWidth().weight(1f),
-                            enabled = drone.connected,
-                            onMove = drone::setLeft)
-                        Text("left / right  •  up / down", fontSize = 9.sp, color = Color.LightGray)
-                    }
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("ROLL / PITCH", color = Pale, fontSize = 11.sp)
-                        VirtualJoystick(Modifier.fillMaxWidth().weight(1f),
-                            enabled = drone.connected,
-                            onMove = drone::setRight)
-                        Text("strafe  •  forward / back", fontSize = 9.sp, color = Color.LightGray)
-                    }
-                }
-
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        enabled = drone.connected && !drone.takeoffRequested,
-                        onClick = drone::takeoff,
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                    ) { Text("Take off", fontSize = 11.sp) }
-                    Button(
-                        modifier = Modifier.weight(1f), enabled = drone.connected,
-                        onClick = drone::land,
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                    ) { Text("Land", fontSize = 11.sp) }
-                    Button(
-                        modifier = Modifier.weight(1.25f), enabled = drone.connected,
-                        onClick = drone::emergencyStop,
-                        colors = ButtonDefaults.buttonColors(containerColor = Danger),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                    ) { Text("MOTOR STOP", fontSize = 10.sp, color = Color.White) }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f), enabled = drone.connected,
-                        onClick = drone::cycleSpeed,
-                        contentPadding = PaddingValues(4.dp)
-                    ) { Text("Speed ${drone.speedMode}/2", fontSize = 11.sp) }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f), enabled = drone.connected,
-                        onClick = drone::toggleHeadless,
-                        contentPadding = PaddingValues(4.dp)
-                    ) { Text("Headless ${if (drone.headless) "ON" else "OFF"}", fontSize = 11.sp) }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = drone.connected && !drone.takeoffRequested,
-                        onClick = drone::calibrate,
-                        contentPadding = PaddingValues(4.dp)
-                    ) { Text("Calibrate", fontSize = 11.sp) }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Firmware-specific yaw / roll reversal", fontSize = 10.sp,
-                        modifier = Modifier.weight(1f), color = Color.LightGray)
-                    TextButton(onClick = drone::toggleReverse,
-                        enabled = drone.connected && !drone.takeoffRequested) {
-                        Text(if (drone.reverseDirection) "REVERSE ON" else "NORMAL",
-                            fontSize = 11.sp)
-                    }
-                }
-                Text(
-                    "Emergency stop removes lift. Manual control only; never trust video for collision avoidance.",
-                    fontSize = 10.sp, color = Warning, maxLines = 2
-                )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f), enabled = drone.connected,
+                    onClick = drone::cycleSpeed,
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text("Speed ${drone.speedMode}/2", fontSize = 10.sp) }
+                OutlinedButton(
+                    modifier = Modifier.weight(1f), enabled = drone.connected,
+                    onClick = drone::toggleHeadless,
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text("Headless ${if (drone.headless) "ON" else "OFF"}", fontSize = 10.sp) }
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    enabled = drone.connected && !drone.takeoffRequested,
+                    onClick = drone::calibrate,
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text("Calibrate", fontSize = 10.sp) }
+                TextButton(
+                    onClick = drone::toggleReverse,
+                    enabled = drone.connected && !drone.takeoffRequested,
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text(if (drone.reverseDirection) "REV ON" else "NORMAL", fontSize = 10.sp) }
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(drone.linkStatus, fontSize = 11.sp, color = Warning,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
+        // Transparent Left Virtual Joystick (YAW / ALTITUDE)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(bottom = 24.dp, start = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("YAW / ALTITUDE", color = Pale.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            VirtualJoystick(
+                modifier = Modifier.size(175.dp),
+                enabled = drone.connected,
+                onMove = drone::setLeft
+            )
+            Spacer(Modifier.height(2.dp))
+            Text("left/right • up/down", fontSize = 9.sp, color = Color.LightGray.copy(alpha = 0.7f))
+        }
+
+        // Transparent Right Virtual Joystick (ROLL / PITCH)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 24.dp, end = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("ROLL / PITCH", color = Pale.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            VirtualJoystick(
+                modifier = Modifier.size(175.dp),
+                enabled = drone.connected,
+                onMove = drone::setRight
+            )
+            Spacer(Modifier.height(2.dp))
+            Text("strafe • forward/back", fontSize = 9.sp, color = Color.LightGray.copy(alpha = 0.7f))
+        }
+
+        // Bottom Status Bar (Translucent Overlay)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .background(Navy.copy(alpha = 0.8f))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(drone.linkStatus, fontSize = 10.sp, color = Warning, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.weight(1f))
-            Text("UDP 8080 • 40 Hz • unacknowledged", color = Color.LightGray, fontSize = 10.sp)
+            Text("UDP 8080 • 40 Hz", color = Color.LightGray, fontSize = 9.sp)
         }
     }
 }
@@ -277,19 +309,20 @@ private fun VirtualJoystick(
     }
     Canvas(
         modifier = modifier.aspectRatio(1f).then(gesture)
-            .border(1.dp, Color(0xFF456581), CircleShape)
+            .background(Color(0x3017283F), CircleShape)
+            .border(1.5.dp, Color(0x90456581), CircleShape)
     ) {
         val radius = min(size.width, size.height) * 0.41f
-        drawCircle(Color(0xFF20364E), radius, style = Stroke(3.dp.toPx()))
-        drawLine(Color(0xFF456581), Offset(center.x - radius, center.y),
+        drawCircle(Color(0x5020364E), radius, style = Stroke(2.dp.toPx()))
+        drawLine(Color(0x70456581), Offset(center.x - radius, center.y),
             Offset(center.x + radius, center.y), 1.dp.toPx())
-        drawLine(Color(0xFF456581), Offset(center.x, center.y - radius),
+        drawLine(Color(0x70456581), Offset(center.x, center.y - radius),
             Offset(center.x, center.y + radius), 1.dp.toPx())
         val knob = Offset(center.x + position.x * radius,
             center.y - position.y * radius)
-        drawCircle(if (enabled) Accent else Color.DarkGray, radius * 0.26f,
+        drawCircle(if (enabled) Accent.copy(alpha = 0.85f) else Color.DarkGray.copy(alpha = 0.5f), radius * 0.26f,
             center = knob)
-        drawCircle(Color.White.copy(alpha = 0.35f), radius * 0.26f,
+        drawCircle(Color.White.copy(alpha = 0.5f), radius * 0.26f,
             center = knob, style = Stroke(2.dp.toPx()))
     }
 }
