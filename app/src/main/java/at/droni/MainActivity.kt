@@ -27,9 +27,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import at.droni.ui.*
 import at.droni.net.DroneController
 import at.droni.protocol.ElfieProtocol
 import kotlinx.coroutines.Job
@@ -41,12 +44,12 @@ import kotlin.math.min
 import kotlin.math.sign
 import kotlin.math.sqrt
 
-private val Navy = Color(0xFF0A1220)
-private val Panel = Color(0xFF16253A)
-private val Accent = Color(0xFF47C5F7)
-private val Pale = Color(0xFFE8F1FA)
-private val Warning = Color(0xFFFFBF69)
-private val Danger = Color(0xFFE84A5F)
+private val Navy = DroniColors.Background
+private val Panel = DroniColors.Surface
+private val Accent = DroniColors.Cyan
+private val Pale = DroniColors.Text
+private val Warning = DroniColors.Amber
+private val Danger = DroniColors.Red
 
 /** Native Android version of Dr. Vahid Tavakkoli's JJRC Elfie controller. */
 class MainActivity : ComponentActivity() {
@@ -58,15 +61,7 @@ class MainActivity : ComponentActivity() {
         controller = DroneController(applicationContext)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Accent,
-                    surface = Panel,
-                    background = Navy,
-                    onSurface = Pale,
-                    onBackground = Pale,
-                )
-            ) {
+            DroniTheme {
                 DroniApp(controller)
             }
         }
@@ -176,12 +171,12 @@ internal fun FlightDeck(
             if (!drone.connected) {
                 Column(
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .background(Navy.copy(alpha = 0.86f), RoundedCornerShape(14.dp))
-                        .padding(horizontal = 24.dp, vertical = 13.dp),
+                        .align(Alignment.TopCenter).padding(top = 80.dp)
+                        .background(Navy.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 18.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("CAMERA STANDBY", color = Pale, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("YOUR VIEW STARTS HERE", color = Pale, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Text("Join JJRC Elfie Wi-Fi and connect", color = Pale.copy(alpha = 0.72f), fontSize = 10.sp)
                 }
             }
@@ -189,9 +184,6 @@ internal fun FlightDeck(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    // Reclaim unused left space on landscape phones while the safe
-                    // drawing insets continue to protect the system navigation bar.
-                    .offset(x = if (compact) 0.dp else (-18).dp)
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 DeckHeader(
@@ -261,7 +253,8 @@ private fun DeckHeader(
     onDisconnect: () -> Unit,
     compact: Boolean
 ) {
-    val corner = RoundedCornerShape(14.dp)
+    val corner = RoundedCornerShape(16.dp)
+    val videoLive = drone.connected && drone.videoStatus.startsWith("VIDEO LIVE")
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -282,8 +275,12 @@ private fun DeckHeader(
 
         Column(Modifier.weight(1f)) {
             Text(
-                if (drone.connected) "●  FPV LIVE  /  H.264" else "●  FPV OFFLINE  /  H.264",
-                color = if (drone.connected) Color(0xFF5EE2C4) else Warning,
+                when {
+                    videoLive -> "●  CAMERA LIVE"
+                    drone.connected -> "●  CAMERA CONNECTING"
+                    else -> "●  CAMERA STANDBY"
+                },
+                color = if (videoLive) DroniColors.Mint else Pale.copy(alpha = .7f),
                 fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1
             )
             Spacer(Modifier.height(3.dp))
@@ -311,8 +308,9 @@ private fun DeckHeader(
                 ),
                 modifier = Modifier
                     .width(114.dp)
-                    .height(36.dp)
-                    .padding(horizontal = 9.dp, vertical = 9.dp)
+                    .height(48.dp)
+                    .semantics { contentDescription = "Drone IP address" }
+                    .padding(horizontal = 9.dp, vertical = 16.dp)
             )
         }
 
@@ -320,7 +318,7 @@ private fun DeckHeader(
         Button(
             onClick = drone::toggleRecording,
             enabled = drone.connected,
-            modifier = Modifier.width(if (compact) 90.dp else 106.dp).height(38.dp),
+            modifier = Modifier.width(if (compact) 90.dp else 106.dp).height(48.dp),
             shape = RoundedCornerShape(9.dp),
             contentPadding = PaddingValues(horizontal = 3.dp),
             colors = ButtonDefaults.buttonColors(
@@ -337,7 +335,7 @@ private fun DeckHeader(
         if (drone.connected) {
             OutlinedButton(
                 onClick = onDisconnect,
-                modifier = Modifier.width(96.dp).height(38.dp),
+                modifier = Modifier.width(96.dp).height(48.dp),
                 shape = RoundedCornerShape(9.dp),
                 border = BorderStroke(1.dp, Pale.copy(alpha = 0.40f)),
                 contentPadding = PaddingValues(horizontal = 4.dp)
@@ -347,7 +345,7 @@ private fun DeckHeader(
         } else {
             Button(
                 onClick = { drone.connect(host) },
-                modifier = Modifier.width(96.dp).height(38.dp),
+                modifier = Modifier.width(96.dp).height(48.dp),
                 shape = RoundedCornerShape(9.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Accent.copy(alpha = 0.40f),
@@ -391,7 +389,7 @@ private fun FlightConsole(
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(
-                modifier = Modifier.weight(1f).height(44.dp),
+                modifier = Modifier.weight(1f).height(48.dp),
                 enabled = drone.connected && !drone.takeoffRequested && !preflightCalibrating,
                 onClick = onTakeoff,
                 shape = RoundedCornerShape(9.dp),
@@ -406,7 +404,7 @@ private fun FlightConsole(
                     fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Button(
-                modifier = Modifier.weight(1f).height(44.dp),
+                modifier = Modifier.weight(1f).height(48.dp),
                 enabled = drone.connected,
                 onClick = onLand,
                 shape = RoundedCornerShape(9.dp),
@@ -421,7 +419,7 @@ private fun FlightConsole(
                     fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Button(
-                modifier = Modifier.weight(1.3f).height(44.dp),
+                modifier = Modifier.weight(1.3f).height(48.dp),
                 enabled = drone.connected,
                 onClick = onMotorStop,
                 shape = RoundedCornerShape(9.dp),
@@ -472,7 +470,7 @@ private fun ConsoleOption(
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(38.dp),
+        modifier = modifier.height(48.dp),
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(
             1.dp, if (active) Accent else Pale.copy(alpha = 0.25f)
@@ -502,7 +500,7 @@ private fun StickDock(
             fontWeight = FontWeight.Bold, maxLines = 1)
         Spacer(Modifier.height(6.dp))
         VirtualJoystick(
-            modifier = Modifier.size(size),
+            modifier = Modifier.size(size).semantics { contentDescription = "$label joystick. $hint" },
             enabled = enabled,
             onMove = onMove
         )
