@@ -32,8 +32,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * Written by Dr. Vahid Tavakkoli.
  */
 class DroneController(private val context: Context) {
+    private companion object { const val DEFAULT_SPEED_MODE = 1 }
+
     private val ui = Handler(Looper.getMainLooper())
-    private val axes = AtomicReference(ElfieProtocol.Input())
+    private val axes = AtomicReference(ElfieProtocol.Input(speedMode = DEFAULT_SPEED_MODE))
     private val packetCounter = AtomicInteger(0)
     private val lock = Any()
 
@@ -51,7 +53,7 @@ class DroneController(private val context: Context) {
         private set
     var sentCount by mutableIntStateOf(0)
         private set
-    var speedMode by mutableIntStateOf(0)
+    var speedMode by mutableIntStateOf(DEFAULT_SPEED_MODE)
         private set
     var headless by mutableStateOf(false)
         private set
@@ -124,7 +126,7 @@ class DroneController(private val context: Context) {
                 synchronized(lock) {
                     socket = udp
                     address = target
-                    axes.set(ElfieProtocol.Input(reverseDirection = reverseDirection))
+                    axes.set(ElfieProtocol.Input(speedMode = speedMode, reverseDirection = reverseDirection))
                     packetCounter.set(0)
                     sentCount = 0
                     commandExpires = 0L
@@ -298,11 +300,11 @@ class DroneController(private val context: Context) {
             }
             socket = null
             address = null
-            axes.set(ElfieProtocol.Input(reverseDirection = reverseDirection))
+            axes.set(ElfieProtocol.Input(speedMode = DEFAULT_SPEED_MODE, reverseDirection = reverseDirection))
             commandExpires = 0L
         }
         takeoffRequested = false
-        speedMode = 0
+        speedMode = DEFAULT_SPEED_MODE
         headless = false
         connected = false
         linkStatus = "Disconnected. Neutral attempted; landing NOT guaranteed."

@@ -99,7 +99,7 @@ private fun FlightDeck(drone: DroneController) {
         // Respect the notch, status bar, camera cutout and landscape navigation bar.
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
             val compact = maxWidth < 690.dp
-            val stickSize = minOf(142.dp, maxWidth * 0.195f, maxHeight * 0.40f)
+            val stickSize = minOf(166.dp, maxWidth * 0.225f, maxHeight * 0.48f)
             val consoleWidth = minOf(376.dp, maxWidth - stickSize * 2 - 44.dp)
 
             if (!drone.connected) {
@@ -118,6 +118,9 @@ private fun FlightDeck(drone: DroneController) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    // Reclaim unused left space on landscape phones while the safe
+                    // drawing insets continue to protect the system navigation bar.
+                    .offset(x = if (compact) 0.dp else (-18).dp)
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 DeckHeader(
@@ -176,7 +179,7 @@ private fun DeckHeader(
         modifier = Modifier
             .fillMaxWidth()
             .height(60.dp)
-            .background(Panel.copy(alpha = 0.96f), corner)
+            .background(Panel.copy(alpha = 0.32f), corner)
             .border(1.dp, Accent.copy(alpha = 0.18f), corner)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -218,7 +221,7 @@ private fun DeckHeader(
                 modifier = Modifier
                     .width(114.dp)
                     .height(36.dp)
-                    .background(Navy, RoundedCornerShape(8.dp))
+                    .background(Navy.copy(alpha = 0.42f), RoundedCornerShape(8.dp))
                     .border(1.dp, Pale.copy(alpha = 0.17f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 9.dp, vertical = 9.dp)
             )
@@ -239,6 +242,10 @@ private fun DeckHeader(
                 onClick = { drone.connect(host) },
                 modifier = Modifier.width(96.dp).height(38.dp),
                 shape = RoundedCornerShape(9.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent.copy(alpha = 0.40f),
+                    contentColor = Pale
+                ),
                 contentPadding = PaddingValues(horizontal = 4.dp)
             ) {
                 Text("Connect", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -252,7 +259,7 @@ private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier)
     val corner = RoundedCornerShape(16.dp)
     Column(
         modifier = modifier
-            .background(Panel.copy(alpha = 0.96f), corner)
+            .background(Panel.copy(alpha = 0.32f), corner)
             .border(1.dp, Accent.copy(alpha = 0.22f), corner)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -275,7 +282,11 @@ private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier)
                 onClick = drone::takeoff,
                 shape = RoundedCornerShape(9.dp),
                 contentPadding = PaddingValues(horizontal = 2.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent.copy(alpha = 0.32f), contentColor = Pale,
+                    disabledContainerColor = Panel.copy(alpha = 0.20f),
+                    disabledContentColor = Pale.copy(alpha = 0.55f)
+                )
             ) {
                 Text("TAKE OFF", fontSize = 10.sp,
                     fontWeight = FontWeight.Bold, maxLines = 1)
@@ -286,7 +297,11 @@ private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier)
                 onClick = drone::land,
                 shape = RoundedCornerShape(9.dp),
                 contentPadding = PaddingValues(horizontal = 2.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent.copy(alpha = 0.32f), contentColor = Pale,
+                    disabledContainerColor = Panel.copy(alpha = 0.20f),
+                    disabledContentColor = Pale.copy(alpha = 0.55f)
+                )
             ) {
                 Text("LAND", fontSize = 10.sp,
                     fontWeight = FontWeight.Bold, maxLines = 1)
@@ -298,8 +313,8 @@ private fun FlightConsole(drone: DroneController, modifier: Modifier = Modifier)
                 shape = RoundedCornerShape(9.dp),
                 contentPadding = PaddingValues(horizontal = 2.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Danger, contentColor = Color.White,
-                    disabledContainerColor = Danger.copy(alpha = 0.32f)
+                    containerColor = Danger.copy(alpha = 0.68f), contentColor = Color.White,
+                    disabledContainerColor = Danger.copy(alpha = 0.22f)
                 )
             ) {
                 Text("MOTOR STOP", fontSize = 10.sp,
@@ -349,6 +364,7 @@ private fun ConsoleOption(
             1.dp, if (active) Accent else Pale.copy(alpha = 0.25f)
         ),
         colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Panel.copy(alpha = 0.26f),
             contentColor = if (active) Accent else Pale
         ),
         contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp)
@@ -389,7 +405,7 @@ private fun DeckStatus(drone: DroneController) {
         modifier = Modifier
             .fillMaxWidth()
             .height(30.dp)
-            .background(Navy.copy(alpha = 0.95f), corner)
+            .background(Navy.copy(alpha = 0.38f), corner)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -491,7 +507,7 @@ private fun VirtualJoystick(
             modifier = Modifier
                 .fillMaxSize()
                 .then(gesture)
-                .background(Navy.copy(alpha = 0.66f), CircleShape)
+                .background(Navy.copy(alpha = 0.35f), CircleShape)
                 .border(1.5.dp, Accent.copy(alpha = 0.46f), CircleShape)
         ) {
             val radius = min(size.width, size.height) * 0.41f

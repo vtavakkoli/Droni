@@ -6,7 +6,7 @@ Droni is an open-source native Android flight controller for the JJRC Elfie Wi�
 
 ## Features
 - Native Android interface with two independent touchscreen joysticks, continuous 40 Hz control transmission, real-time link status and built-in video preview
-- Takeoff, land, emergency motor stop, trim-neutral flight, speed 0/1/2, headless mode, disarmed calibration
+- Takeoff, land, emergency motor stop, trim-neutral flight, speed 0/1/2 (default mode 1), headless mode, disarmed calibration
 - Wi‑Fi network-scoped sockets: the drone's no-internet Wi‑Fi can be used even when mobile data is enabled
 - TCP H.264 camera streaming with the original handshake and hardware-accelerated Android `MediaCodec` decoding
 - Zeroed controls on release, activity pause and disconnect; explicit warnings when UDP send fails
