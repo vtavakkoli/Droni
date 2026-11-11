@@ -17,6 +17,12 @@ internal class FlightLaunch(
         if (airborneRequest) check(control.takeoffRequested) { "Flight request cancelled" }
     }
 
+    private suspend fun observe(phase: String, baseline: Long, ms: Long,
+                                airborneRequest: Boolean = false, status: (String) -> Unit) {
+        try { waitFor(ms, airborneRequest) }
+        finally { status(control.checkResponses(phase, baseline)) }
+    }
+
     private suspend fun connection(host: String, settings: FlightSequenceSettings, status: (String) -> Unit) {
         currentCoroutineContext().ensureActive()
         check(!control.takeoffRequested) { "Land before starting a new launch sequence" }
@@ -25,9 +31,8 @@ internal class FlightLaunch(
             check(settings.autoConnect) { "Connect to the drone first or enable auto-connect" }
             status("Connecting · waiting ${settings.connectionWaitMs / 1000} s")
             control.connect(host)
-            waitFor(settings.connectionWaitMs)
-        }
-        status(control.checkResponses("Connection", baseline))
+            observe("Connection", baseline, settings.connectionWaitMs, status = status)
+        } else status(control.checkResponses("Connection", baseline))
         control.setFlightSpeed(settings.speedMode)
         control.neutral()
     }
@@ -36,9 +41,8 @@ internal class FlightLaunch(
         val baseline = control.responseCount()
         status("Calibration requested · waiting ${settings.calibrationWaitMs / 1000} s")
         control.calibrate()
-        waitFor(settings.calibrationWaitMs)
+        observe("Calibration", baseline, settings.calibrationWaitMs, status = status)
         check(!control.takeoffRequested) { "Flight started during calibration" }
-        status(control.checkResponses("Calibration", baseline))
     }
 
     suspend fun calibrateOnly(host: String, settings: FlightSequenceSettings, onStatus: (String) -> Unit) {
@@ -63,15 +67,16 @@ internal class FlightLaunch(
             onStatus("Takeoff requested · waiting ${settings.takeoffWaitMs / 1000} s")
             control.takeoff()
             requestedHere = true
-            waitFor(settings.takeoffWaitMs, airborneRequest = true)
-            onStatus(control.checkResponses("Takeoff", baseline))
+            observe("Takeoff", baseline, settings.takeoffWaitMs, airborneRequest = true, status = onStatus)
 
             baseline = control.responseCount()
             onStatus("Up ${settings.climbPercent}% · ${settings.climbDurationMs} ms")
             control.climbPulse(settings.climbPercent / 100f, settings.climbDurationMs)
-            waitFor(settings.climbDurationMs, airborneRequest = true)
-            control.neutral()
-            onStatus(control.checkResponses("Climb", baseline))
+            try { waitFor(settings.climbDurationMs, airborneRequest = true) }
+            finally {
+                control.neutral()
+                onStatus(control.checkResponses("Climb", baseline))
+            }
             waitFor(settings.commandGapMs, airborneRequest = true)
             completed = true
             onStatus("Launch requests complete · manual controls ready · ACK unverified")
@@ -88,7 +93,6 @@ internal class FlightLaunch(
         control.neutral()
         control.land()
         onStatus("Landing requested · checking replies for ${settings.landingWaitMs / 1000} s")
-        waitFor(settings.landingWaitMs)
-        onStatus(control.checkResponses("Landing", baseline))
+        observe("Landing", baseline, settings.landingWaitMs, status = onStatus)
     }
 }

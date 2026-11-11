@@ -55,14 +55,18 @@ internal class PathMission(
                 val baseline = control.responseCount()
                 onStatus("Path command ${index + 1}/${steps.size} · checking incoming replies")
                 control.setRight(step.roll, step.pitch)
-                pause(step.durationMs)
-                currentCoroutineContext().ensureActive()
-                control.neutral()
-                check(control.connected && control.takeoffRequested) { "Flight request cancelled or disconnected" }
-                pause(settings.commandGapMs)
-                currentCoroutineContext().ensureActive()
-                check(control.connected && control.takeoffRequested) { "Flight request cancelled or disconnected" }
-                onStatus(control.checkResponses("Path ${index + 1}", baseline))
+                try {
+                    pause(step.durationMs)
+                    currentCoroutineContext().ensureActive()
+                    control.neutral()
+                    check(control.connected && control.takeoffRequested) { "Flight request cancelled or disconnected" }
+                    pause(settings.commandGapMs)
+                    currentCoroutineContext().ensureActive()
+                    check(control.connected && control.takeoffRequested) { "Flight request cancelled or disconnected" }
+                } finally {
+                    control.neutral()
+                    onStatus(control.checkResponses("Path ${index + 1}", baseline))
+                }
                 onProgress((index + 1).toFloat() / steps.size)
             }
             launch.land(settings, onStatus)

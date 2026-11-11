@@ -43,7 +43,12 @@ class PathMissionTest {
             }
             assertEquals(cancelAt, waits)
             assertFalse(flight.takeoffRequested)
-            assertEquals("neutral", flight.events.last().action)
+            val cleanup = flight.events.takeLastWhile { it.at == flight.now }
+            assertTrue(cleanup.isNotEmpty())
+            assertTrue(cleanup.all { it.action == "neutral" || it.action == "land" })
+            if (flight.events.last().action == "land") {
+                assertEquals("neutral", flight.events[flight.events.lastIndex - 1].action)
+            } else assertEquals("neutral", flight.events.last().action)
             if (cancelAt <= 2) assertFalse(flight.events.any { it.action == "takeoff" || it.action == "land" })
             if (cancelAt <= 5) assertFalse(flight.events.any { it.action == "right" })
         }

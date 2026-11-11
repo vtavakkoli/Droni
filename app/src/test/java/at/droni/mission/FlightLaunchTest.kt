@@ -48,6 +48,7 @@ class FlightLaunchTest {
         }
         assertFalse(flight.pending)
         assertFalse(flight.events.any { it.action in setOf("calibrate", "takeoff", "climb") })
+        assertEquals(listOf("Connection"), flight.checkedPhases)
     }
 
     @Test fun cancellingPendingConnectDoesNotCompleteItLater() {
