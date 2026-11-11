@@ -18,14 +18,18 @@ The user's drawing is a normalized screen-space polyline; it has no mapping
 to real-world meters, local compass coordinates, obstacle distance, or GPS.
 
 - **SIMULATE**: no control packets, safe offline demonstration.
-- **EXPERIMENTAL TRIAL**: calibration request, wait 1 second; takeoff request,
-  wait 1 second; 100% upward stick input for a bounded 200 ms climb pulse;
-  vertical neutral and a 200 ms neutral gap. Then at most 24 roll/pitch pulses,
+- **EXPERIMENTAL TRIAL**: if disconnected, auto-connect and wait 10 seconds;
+  apply speed 1, request calibration and wait 5 seconds; request takeoff and wait
+  5 seconds; 100% upward stick for 200 ms, then neutral. The same configurable
+  launch settings are used in Drone Fly. Then at most 24 roll/pitch pulses,
   16% of the joystick range, 180 ms each with 200 ms neutral gaps, followed by
-  neutral axes and a landing request. No measured altitude or touchdown feedback.
-- **Command timing**: command flags expire at the one-second deadline before
-  axes are accepted, even if the next 40 Hz UDP tick has not happened. New
-  calibration, takeoff, landing and motor-stop pulses clear previous command flags.
+  neutral axes, a landing request and a 5-second response check.
+- **Command timing**: command flags expire before new axes are accepted. New
+  command pulses clear previous flags. The UDP sender also expires the timed
+  climb input, without depending on the UI coroutine to resume on time.
+- **Responses**: received packets on the control socket or local UDP 8081 are
+  counted and recorded by phase. There is no verified flight-ACK decoder. A
+  packet or device identity never confirms calibration, takeoff or touchdown.
 - **Abort**: cancels sending future commands, sends neutral axes and LAND.
 - **Lifecycle**: leaving the screen requests LAND if a trial is active. Leaving
   the app terminates the link, but a neutral packet is *not* a guaranteed landing.

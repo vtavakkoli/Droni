@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import at.droni.BuildConfig
+import at.droni.settings.FlightSequenceSettings
 
 @Composable
 fun HomeScreen(connected: Boolean, onOpen: (String) -> Unit) {
@@ -133,38 +134,50 @@ private fun HomeTile(title: String, subtitle: String, icon: DroniSymbol, accent:
 }
 
 @Composable
-fun SettingsScreen(host: String, connected: Boolean, showGrid: Boolean, defaultSpeed: Int,
-                   autoCalibration: Boolean, onHostChange: (String) -> Unit,
-                   onGridChange: (Boolean) -> Unit, onSpeedChange: (Int) -> Unit,
-                   onCalibrationChange: (Boolean) -> Unit, onBack: () -> Unit) {
-    PageFrame("Settings", "Your preferences, remembered on this device", onBack) {
+fun SettingsScreen(host: String, connected: Boolean, showGrid: Boolean,
+                   sequence: FlightSequenceSettings, feedbackStatus: String,
+                   onHostChange: (String) -> Unit, onGridChange: (Boolean) -> Unit,
+                   onSequenceChange: (FlightSequenceSettings) -> Unit,
+                   onShareFeedback: () -> Unit, onBack: () -> Unit) {
+    PageFrame("Settings", "One launch sequence for the flight deck and Draw Path", onBack) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 AppCard {
-                    SectionHeading(DroniSymbol.Wifi, "Connection", "Your drone’s Wi-Fi gateway")
+                    SectionHeading(DroniSymbol.Wifi, "Connection", "Join the drone Wi-Fi on your phone first")
                     OutlinedTextField(value = host, onValueChange = onHostChange,
                         label = { Text("Drone IP address") }, singleLine = true,
                         enabled = !connected, shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                         modifier = Modifier.fillMaxWidth(),
                         supportingText = { Text(if (connected) "Disconnect to change the address" else "Default: 172.16.10.1") })
+                    PreferenceToggle("Auto-connect before launch", "Connect automatically when Take Off or a path trial starts.",
+                        sequence.autoConnect, { onSequenceChange(sequence.copy(autoConnect = it)) })
+                    SettingsStepper("Connection wait", sequence.connectionWaitMs / 1000, "s", 1, 1L..60L) {
+                        onSequenceChange(sequence.copy(connectionWaitMs = it * 1000))
+                    }
                 }
                 AppCard {
                     SectionHeading(DroniSymbol.Grid, "Camera", "Frame your next shot")
-                    PreferenceToggle("Composition grid", "Show a rule-of-thirds guide over live video.",
-                        showGrid, onGridChange)
+                    PreferenceToggle("Composition grid", "Show a rule-of-thirds guide over live video.", showGrid, onGridChange)
+                }
+                AppCard {
+                    SectionHeading(DroniSymbol.Info, "Drone response checks", "Checked after every launch and path stage")
+                    Text(feedbackStatus, color = DroniColors.Mint, style = MaterialTheme.typography.bodyMedium)
+                    Text("Incoming UDP packets are recorded. A reply, identity string or live video does not confirm calibration, takeoff or landing. Flight ACK decoding is unverified.",
+                        color = DroniColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = onShareFeedback) { Text("Share response log") }
                 }
             }
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 AppCard {
-                    SectionHeading(DroniSymbol.Flight, "Flight preferences", "Set your starting point")
-                    Text("Default drone speed", style = MaterialTheme.typography.titleMedium)
+                    SectionHeading(DroniSymbol.Flight, "Launch sequence", "Used by both flight screens")
+                    Text("Launch speed", style = MaterialTheme.typography.titleMedium)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Low", "Medium", "High").forEachIndexed { index, label ->
-                            val isSelected = defaultSpeed == index
-                            OutlinedButton(onClick = { onSpeedChange(index) },
+                            val isSelected = sequence.speedMode == index
+                            OutlinedButton(onClick = { onSequenceChange(sequence.copy(speedMode = index)) },
                                 modifier = Modifier.weight(1f).semantics { selected = isSelected },
                                 shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp),
                                 border = BorderStroke(1.dp, if (isSelected) DroniColors.Cyan else DroniColors.Outline),
@@ -178,19 +191,56 @@ fun SettingsScreen(host: String, connected: Boolean, showGrid: Boolean, defaultS
                             }
                         }
                     }
-                    Text("Applied at startup and after disconnecting. Adjust it anytime in the flight deck.",
+                    Text("Default: speed 1. Applied before calibration and takeoff, including on an existing connection.",
                         color = DroniColors.Muted, style = MaterialTheme.typography.bodySmall)
                     HorizontalDivider(color = DroniColors.Outline)
-                    PreferenceToggle("Auto-calibrate before takeoff", "Request calibration, wait, then request takeoff.",
-                        autoCalibration, onCalibrationChange)
-                    Row(Modifier.background(DroniColors.Amber.copy(alpha = .06f), RoundedCornerShape(10.dp)).padding(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                        DroniIcon(DroniSymbol.Level, Modifier.size(18.dp), DroniColors.Amber)
-                        Text("Keep the drone level and still. Calibration is a request; the drone does not confirm it.",
-                            color = DroniColors.Amber, style = MaterialTheme.typography.bodySmall)
+                    PreferenceToggle("Auto-calibrate before takeoff", "Keep the drone level and still. A command is not a completion acknowledgement.",
+                        sequence.autoCalibrate, { onSequenceChange(sequence.copy(autoCalibrate = it)) })
+                    SettingsStepper("Calibration wait", sequence.calibrationWaitMs / 1000, "s", 1, 1L..30L) {
+                        onSequenceChange(sequence.copy(calibrationWaitMs = it * 1000))
+                    }
+                    SettingsStepper("Takeoff wait", sequence.takeoffWaitMs / 1000, "s", 1, 1L..30L) {
+                        onSequenceChange(sequence.copy(takeoffWaitMs = it * 1000))
                     }
                 }
+                AppCard {
+                    SectionHeading(DroniSymbol.Level, "Initial climb & path", "Timed inputs, without measured altitude")
+                    SettingsStepper("Upward input", sequence.climbPercent.toLong(), "%", 5, 0L..100L) {
+                        onSequenceChange(sequence.copy(climbPercent = it.toInt()))
+                    }
+                    SettingsStepper("Upward pulse", sequence.climbDurationMs, "ms", 50, 50L..1000L) {
+                        onSequenceChange(sequence.copy(climbDurationMs = it))
+                    }
+                    SettingsStepper("Neutral command gap", sequence.commandGapMs, "ms", 25, 25L..2000L) {
+                        onSequenceChange(sequence.copy(commandGapMs = it))
+                    }
+                    SettingsStepper("Landing response wait", sequence.landingWaitMs / 1000, "s", 1, 1L..30L) {
+                        onSequenceChange(sequence.copy(landingWaitMs = it * 1000))
+                    }
+                    Text("Defaults: 100% up for 200 ms, then neutral; 200 ms between path commands. The flight deck hands control back after the launch sequence. Draw Path requests landing at the end.",
+                        color = DroniColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = { onSequenceChange(FlightSequenceSettings()) }) { Text("Reset launch defaults") }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsStepper(label: String, value: Long, unit: String, step: Long,
+                            range: LongRange, onChange: (Long) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        OutlinedIconButton(onClick = { onChange((value - step).coerceIn(range)) },
+            enabled = value > range.first, modifier = Modifier.size(40.dp)) {
+            Text("−", modifier = Modifier.semantics { contentDescription = "Decrease $label" })
+        }
+        Text("$value $unit", style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.widthIn(min = 52.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        OutlinedIconButton(onClick = { onChange((value + step).coerceIn(range)) },
+            enabled = value < range.last, modifier = Modifier.size(40.dp)) {
+            Text("+", modifier = Modifier.semantics { contentDescription = "Increase $label" })
         }
     }
 }

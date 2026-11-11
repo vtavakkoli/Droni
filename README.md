@@ -7,7 +7,7 @@
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Android-7F52FF?logo=kotlin"/>
   <img alt="Android API" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android"/>
   <img alt="License" src="https://img.shields.io/badge/License-MIT-6CE7D0"/>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.2.0-47C5F7"/>
+  <img alt="Version" src="https://img.shields.io/badge/version-0.3.0-47C5F7"/>
 </p>
 
 <h1 align="center">Droni</h1>
@@ -23,9 +23,9 @@ Droni brings hands-on flight control, first-person video, camera recording, a dr
 | **Splash + Home** | Branded splash, refined home with quick-access cards | Implemented |
 | **Drone Fly** | Transparent dual-joystick FPV layout, takeoff, land, motor stop, speed, headless, disarmed calibration, reversal | Implemented; physical validation needed |
 | **Draw Path** | Finger-drawn route, constrained preview, animated simulation | Implemented |
-| **Experimental Path Trial** | Calibrate → wait 1 s → takeoff → wait 1 s → 100% up for 200 ms → bounded route with 200 ms neutral gaps → landing request | **OPEN LOOP. Not real path following; safety/landing unverified** |
+| **Experimental Path Trial** | Auto-connect + 10 s → speed 1 → calibrate + 5 s → takeoff + 5 s → 100% up for 200 ms → route → landing request and reply check | **OPEN LOOP. Not real path following; safety/landing unverified** |
 | **Recordings** | MP4 capture, asynchronous video library, thumbnails, play and share | Implemented; verify with real camera |
-| **Settings** | Persistent Wi-Fi gateway, default speed 0/1/2, optional auto-calibration before manual takeoff, framing grid | Implemented |
+| **Settings** | Shared manual/path startup settings: auto-connect, speed, connection/calibration/takeoff waits, climb strength/duration, command gap, landing wait, response log, framing grid | Implemented |
 | **About** | Project credits, copyright, source and license | Implemented |
 
 ### Why Droni does not claim autonomous path following
@@ -72,11 +72,29 @@ Gradle wrapper properties are provided; its binary bootstrap JAR is not committe
 
 ## Flight preferences
 
-In **Settings**, choose the persistent default speed (0, 1, or 2; initially **1**). You may also enable **Auto-calibrate before takeoff** (off by default). With this enabled, a manual Take Off first sends a calibration request while the drone is disarmed, waits approximately 1.8 seconds, then sends takeoff only if the same flight screen remains active and connected. Calibration is unacknowledged; it does not verify physical orientation or position. Keep the drone stationary and level. Experimental Draw Path missions have their own calibration step.
+**Settings → Launch sequence** controls both **Drone Fly** and **Draw Path**. Version 0.3.0 initializes the requested defaults once on upgrade, including speed **1** and automatic calibration:
 
-In **Drone Fly**, **REC MP4** is on the top bar; Android Back returns to the home menu. Recordings remain available from the main menu.
+| Setting | Default |
+| :-- | :-- |
+| Auto-connect before launch | On |
+| Connection wait, when not already connected | 10 seconds |
+| Launch speed | 1 |
+| Auto-calibrate | On |
+| Calibration wait | 5 seconds |
+| Takeoff wait | 5 seconds |
+| Initial upward input | 100% for 200 ms |
+| Neutral gap between commands | 200 ms |
+| Landing response check | 5 seconds |
 
-**Draw Path launch:** calibration request → wait **1 second** → takeoff request → wait **1 second** → **100% upward stick input for 200 ms** → vertical neutral → **200 ms** neutral gap → route pulses. Each route pulse is at most 180 ms at 16% roll/pitch, followed by a 200 ms neutral gap. All axes are neutralized before the final landing request. The climb pulse is time-based; no actual height is measured. Continuous 40 Hz UDP transmission remains active during these waits.
+Join the drone Wi-Fi on the phone first. **Take Off** can then start even if Droni's control socket is disconnected: it connects and waits before proceeding. An existing connection is reused, but the configured speed is applied again. Failed connection or cancellation prevents later takeoff/climb commands. The packet sender expires the climb input independently of the UI, then returns axes to neutral. Manual flight hands control back after startup; Draw Path follows the route and requests landing at the end.
+
+All values above are persisted and editable in Settings, with **Reset launch defaults** to restore them. Changing Settings affects both screens. **REC MP4** stays on the flight header and Android Back returns to the menu.
+
+### Incoming response checks
+
+Droni listens on its outbound control socket and, when available, local UDP **8081**. It accepts packets only from the selected drone IP, sends the original read-only device/version requests at connection, and checks for replies after connection, calibration, takeoff, climb, each path segment and landing. The footer shows received-packet counts. **Settings → Drone response checks → Share response log** exports recent phase checks and bounded raw response prefixes for troubleshooting.
+
+**UDP response received is not a verified flight-command acknowledgement.** Identity replies, live video and echoed control packets do not confirm calibration, lift or touchdown. The current firmware's flight-ACK format is unverified; the app reports that honestly and does not invent success acknowledgements. Missing replies are logged rather than silently displayed as successful flight.
 
 ## Connect a drone
 

@@ -7,6 +7,15 @@ import at.droni.protocol.ElfieProtocol
 class DroniSettings(context: Context) {
     private val prefs = context.getSharedPreferences("droni_settings", Context.MODE_PRIVATE)
 
+    init {
+        // Apply the requested startup defaults once on upgrade, including speed 1 on existing installs.
+        if (!prefs.getBoolean("shared_launch_settings_v1", false)) {
+            prefs.edit().putInt("default_drone_speed", 1)
+                .putBoolean("launch_auto_calibration", true)
+                .putBoolean("shared_launch_settings_v1", true).apply()
+        }
+    }
+
     var droneHost: String
         get() = prefs.getString("drone_ip", ElfieProtocol.DEFAULT_HOST) ?: ElfieProtocol.DEFAULT_HOST
         set(value) { prefs.edit().putString("drone_ip", value.take(32)).apply() }
@@ -27,8 +36,34 @@ class DroniSettings(context: Context) {
             prefs.edit().putInt("default_drone_speed", value).apply()
         }
 
-    /** Off by default: only calibrate while stationary and on a level surface. */
+    /** Shared by manual and path launch; the aircraft must be level and stationary. */
     var autoCalibrationBeforeTakeoff: Boolean
-        get() = prefs.getBoolean("auto_calibration_before_takeoff", false)
-        set(value) { prefs.edit().putBoolean("auto_calibration_before_takeoff", value).apply() }
+        get() = prefs.getBoolean("launch_auto_calibration", true)
+        set(value) { prefs.edit().putBoolean("launch_auto_calibration", value).apply() }
+
+    var flightSequence: FlightSequenceSettings
+        get() = FlightSequenceSettings(
+            speedMode = defaultDroneSpeed,
+            autoConnect = prefs.getBoolean("launch_auto_connect", true),
+            connectionWaitMs = prefs.getLong("launch_connection_wait", 10_000).coerceIn(1_000, 60_000),
+            autoCalibrate = autoCalibrationBeforeTakeoff,
+            calibrationWaitMs = prefs.getLong("launch_calibration_wait", 5_000).coerceIn(1_000, 30_000),
+            takeoffWaitMs = prefs.getLong("launch_takeoff_wait", 5_000).coerceIn(1_000, 30_000),
+            climbPercent = prefs.getInt("launch_climb_percent", 100).coerceIn(0, 100),
+            climbDurationMs = prefs.getLong("launch_climb_duration", 200).coerceIn(50, 1_000),
+            commandGapMs = prefs.getLong("launch_command_gap", 200).coerceIn(25, 2_000),
+            landingWaitMs = prefs.getLong("launch_landing_wait", 5_000).coerceIn(1_000, 30_000)
+        )
+        set(value) {
+            prefs.edit().putInt("default_drone_speed", value.speedMode)
+                .putBoolean("launch_auto_connect", value.autoConnect)
+                .putLong("launch_connection_wait", value.connectionWaitMs)
+                .putBoolean("launch_auto_calibration", value.autoCalibrate)
+                .putLong("launch_calibration_wait", value.calibrationWaitMs)
+                .putLong("launch_takeoff_wait", value.takeoffWaitMs)
+                .putInt("launch_climb_percent", value.climbPercent)
+                .putLong("launch_climb_duration", value.climbDurationMs)
+                .putLong("launch_command_gap", value.commandGapMs)
+                .putLong("launch_landing_wait", value.landingWaitMs).apply()
+        }
 }

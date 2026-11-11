@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import at.droni.protocol.ElfieProtocol
 import at.droni.protocol.FlightInputState
+import at.droni.protocol.DroneFeedback
 import at.droni.mission.PathFlightControl
 import at.droni.video.ElfieVideo
 import java.net.DatagramPacket
@@ -21,12 +22,14 @@ import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.SocketTimeoutException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Sends ORIGINAL Android Elfie control packets at 40 Hz over an explicit Wi-Fi network.
@@ -52,6 +55,13 @@ class DroneController(private val context: Context) : PathFlightControl {
     private val axes = FlightInputState(ElfieProtocol.Input(speedMode = DEFAULT_SPEED_MODE))
     private val packetCounter = AtomicInteger(0)
     private val lock = Any()
+    private val generation = AtomicInteger(0)
+    private val connectionExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "Droni-connect").apply { isDaemon = true }
+    }
+    private val feedback = DroneFeedback()
+    private val feedbackUiAt = AtomicLong(0)
+    @Volatile private var notificationSocket: DatagramSocket? = null
 
     @Volatile private var transmitting = false
     @Volatile private var socket: DatagramSocket? = null
@@ -59,6 +69,12 @@ class DroneController(private val context: Context) : PathFlightControl {
     private var worker: ScheduledExecutorService? = null
 
     override var connected by mutableStateOf(false)
+        private set
+    var connecting by mutableStateOf(false)
+        private set
+    var receivedCount by mutableStateOf(0L)
+        private set
+    var feedbackStatus by mutableStateOf("No UDP replies yet · flight ACK unverified")
         private set
     var linkStatus by mutableStateOf("Connect to the drone Wi-Fi, then tap Connect.")
         private set
@@ -123,75 +139,145 @@ class DroneController(private val context: Context) : PathFlightControl {
 
     @Volatile private var lastErrorMsg: String? = null
 
-    fun connect(host: String) {
-        if (connected) return
-        linkStatus = "Connecting..."
-        Executors.newSingleThreadExecutor().execute {
-            val target = try {
+    override fun connect(host: String) {
+        if (connected || connecting || connectionExecutor.isShutdown) return
+        val attempt = generation.incrementAndGet()
+        connecting = true
+        linkStatus = "Connecting to drone Wi-Fi…"
+        feedback.reset()
+        receivedCount = 0
+        feedbackStatus = "Listening for drone replies · flight ACK unverified"
+        connectionExecutor.execute {
+            var pending: DatagramSocket? = null
+            try {
                 val ip = InetAddress.getByName(host.trim())
                 require(ip is Inet4Address) { "Enter an IPv4 address" }
-                InetSocketAddress(ip, ElfieProtocol.CONTROL_PORT)
-            } catch (error: Exception) {
-                ui.post { linkStatus = "Invalid drone IPv4 address: ${error.message}" }
-                return@execute
-            }
-            val network = wifiNetwork()
-            if (network == null) {
-                ui.post { linkStatus = "No Wi-Fi network. Join the JJRC Elfie Wi-Fi in Android Settings." }
-                return@execute
-            }
-            try {
+                val target = InetSocketAddress(ip, ElfieProtocol.CONTROL_PORT)
+                val network = wifiNetwork() ?: error("No Wi-Fi network. Join the Elfie Wi-Fi first.")
+                if (attempt != generation.get()) return@execute
                 val udp = DatagramSocket(null).apply {
                     reuseAddress = true
                     bind(InetSocketAddress(0))
+                    soTimeout = 250
                 }
-                try {
-                    network.bindSocket(udp)
-                } catch (error: Exception) {
-                    udp.close()
-                    throw error
-                }
+                pending = udp
+                network.bindSocket(udp)
                 synchronized(lock) {
+                    if (attempt != generation.get()) return@synchronized
                     socket = udp
                     address = target
                     axes.reset(ElfieProtocol.Input(speedMode = speedMode, reverseDirection = reverseDirection))
                     packetCounter.set(0)
-                    sentCount = 0
                     lastErrorMsg = null
                     transmitting = true
-                    val scheduler = Executors.newSingleThreadScheduledExecutor { task ->
+                    worker = Executors.newSingleThreadScheduledExecutor { task ->
                         Thread(task, "Droni-UDP-40Hz").apply { isDaemon = true }
+                    }.also { it.scheduleWithFixedDelay({ sendTick(attempt) }, 0, ElfieProtocol.PERIOD_MS, TimeUnit.MILLISECONDS) }
+                    listenForReplies(udp, ip, attempt)
+                    // The original app also listens on local UDP 8081. Failure to bind this
+                    // optional port does not turn a usable control socket into a failed connection.
+                    val extra = DatagramSocket(null)
+                    try {
+                        extra.bind(InetSocketAddress(8081))
+                        extra.soTimeout = 250
+                        network.bindSocket(extra)
+                        notificationSocket = extra
+                        listenForReplies(extra, ip, attempt)
+                    } catch (_: Exception) {
+                        extra.close()
+                        ui.post { if (attempt == generation.get())
+                            feedbackStatus = "Control replies monitored · local 8081 unavailable · ACK unverified" }
                     }
-                    worker = scheduler
-                    // Fixed delay prevents a backlog of rapid control packets after Android
-                    // pauses or caches the process; resume with one tick at a time.
-                    scheduler.scheduleWithFixedDelay(::sendTick, 0, ElfieProtocol.PERIOD_MS,
-                        TimeUnit.MILLISECONDS)
+                    video.start(network, ip.hostAddress ?: host.trim())
+                    // Original Android read-only identity/version queries; never treat their replies as flight ACKs.
+                    for (query in listOf(byteArrayOf(0x0f), byteArrayOf(0x28))) {
+                        try { udp.send(DatagramPacket(query, query.size, target)) } catch (_: Exception) { }
+                    }
+                    ui.post {
+                        if (attempt == generation.get() && transmitting) {
+                            connected = true
+                            connecting = false
+                            sentCount = 0
+                            linkStatus = "Control socket active · checking incoming UDP replies"
+                        }
+                    }
+                    pending = null
                 }
-                ui.post {
-                    connected = true
-                    linkStatus = "UDP transmitting on drone Wi-Fi • no drone ACK"
-                }
-                video.start(network, target.address.hostAddress ?: host.trim())
             } catch (error: Exception) {
-                synchronized(lock) {
-                    transmitting = false
-                    worker?.shutdownNow()
-                    worker = null
-                    socket?.close()
-                    socket = null
+                if (attempt == generation.get()) {
+                    synchronized(lock) {
+                        transmitting = false
+                        worker?.shutdownNow(); worker = null
+                        socket?.close(); socket = null
+                        notificationSocket?.close(); notificationSocket = null
+                    }
+                    ui.post {
+                        if (attempt == generation.get()) {
+                            connecting = false
+                            connected = false
+                            linkStatus = "Connection failed: ${error.message}"
+                        }
+                    }
                 }
-                ui.post {
-                    connected = false
-                    linkStatus = "UDP Wi-Fi setup failed: ${error.message}"
-                }
-            }
+            } finally { pending?.close() }
         }
     }
 
+    private fun listenForReplies(udp: DatagramSocket, expectedPeer: InetAddress, attempt: Int) {
+        Thread({
+            val bytes = ByteArray(4096)
+            while (attempt == generation.get() && !udp.isClosed) {
+                val packet = DatagramPacket(bytes, bytes.size)
+                try {
+                    udp.receive(packet)
+                    if (packet.address != expectedPeer || attempt != generation.get()) continue
+                    feedback.record(packet.data.copyOfRange(packet.offset, packet.offset + packet.length),
+                        packet.port, udp.localPort)
+                    val total = feedback.count()
+                    val now = SystemClock.elapsedRealtime()
+                    val previous = feedbackUiAt.get()
+                    if (total == 1L || (now - previous >= 250 && feedbackUiAt.compareAndSet(previous, now))) {
+                        ui.post {
+                            if (attempt == generation.get()) {
+                                receivedCount = total
+                                feedbackStatus = "RX $total UDP replies · flight ACK unverified"
+                            }
+                        }
+                    }
+                } catch (_: SocketTimeoutException) { /* remain responsive to cancellation */ }
+                catch (_: Exception) { break }
+            }
+        }, "Droni-replies-${udp.localPort}").apply { isDaemon = true; start() }
+    }
+
+    override fun responseCount(): Long = feedback.count()
+
+    override fun checkResponses(phase: String, since: Long): String = feedback.check(phase, since).also {
+        receivedCount = feedback.count()
+        feedbackStatus = it
+    }
+
+    fun feedbackReport(): String = "Drone: ${address?.address?.hostAddress ?: "not connected"}\n" + feedback.report()
+
+    override fun cancelPendingConnection() {
+        if (connecting && !connected) disconnect()
+    }
+
+    override fun setFlightSpeed(mode: Int) {
+        require(mode in 0..2)
+        check(connected && !takeoffRequested) { "Set launch speed while connected and disarmed" }
+        speedMode = mode
+        change { it.copy(speedMode = mode) }
+    }
+
+    override fun climbPulse(ascent: Float, durationMs: Long) {
+        check(connected && takeoffRequested) { "A takeoff request is required before climb input" }
+        axes.climbPulse(SystemClock.elapsedRealtime(), ascent, durationMs)
+    }
+
     /** Called only from the 40 Hz executor, never from the UI thread. */
-    private fun sendTick() {
-        if (!transmitting) return
+    private fun sendTick(attempt: Int) {
+        if (!transmitting || attempt != generation.get()) return
         try {
             val now = SystemClock.elapsedRealtime()
             val packetInput = axes.read(now)
@@ -202,12 +288,13 @@ class DroneController(private val context: Context) : PathFlightControl {
             lastErrorMsg = null
             val count = packetCounter.incrementAndGet()
             if (count % 10 == 0) ui.post {
-                if (transmitting) {
+                if (transmitting && attempt == generation.get()) {
                     sentCount = count
                     linkStatus = "UDP packets sent: $count • not flight acknowledgements"
                 }
             }
         } catch (error: Exception) {
+            if (attempt != generation.get()) return
             val msg = error.message ?: "send error"
             if (msg != lastErrorMsg) {
                 lastErrorMsg = msg
@@ -223,7 +310,7 @@ class DroneController(private val context: Context) : PathFlightControl {
     }
 
     /** X = yaw, Y = ascent/descent (positive is upwards). */
-    override fun setLeft(yaw: Float, ascent: Float) {
+    fun setLeft(yaw: Float, ascent: Float) {
         if (!connected) return
         change { current ->
             if (current.takeoff || current.land || current.emergencyStop) current
@@ -300,7 +387,8 @@ class DroneController(private val context: Context) : PathFlightControl {
 
     /** A lifecycle shutdown is NOT a safe-landing acknowledgement. */
     fun disconnect() {
-        video.stop()
+        generation.incrementAndGet()
+        connecting = false
         synchronized(lock) {
             transmitting = false
             worker?.shutdownNow()
@@ -318,9 +406,12 @@ class DroneController(private val context: Context) : PathFlightControl {
                 udp.close()
             }
             socket = null
+            notificationSocket?.close()
+            notificationSocket = null
             address = null
             axes.reset(ElfieProtocol.Input(speedMode = defaultSpeedMode, reverseDirection = reverseDirection))
         }
+        video.stop()
         takeoffRequested = false
         speedMode = defaultSpeedMode
         headless = false
@@ -328,5 +419,8 @@ class DroneController(private val context: Context) : PathFlightControl {
         linkStatus = "Disconnected. Neutral attempted; landing NOT guaranteed."
     }
 
-    fun close() = disconnect()
+    fun close() {
+        disconnect()
+        connectionExecutor.shutdownNow()
+    }
 }
