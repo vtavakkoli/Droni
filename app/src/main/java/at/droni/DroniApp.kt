@@ -24,14 +24,18 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import at.droni.mission.FlightLaunch
+import at.droni.mission.PathMission
 import at.droni.mission.PathPlanner
 import at.droni.mission.PathPoint
 import at.droni.net.DroneController
 import at.droni.settings.DroniSettings
+import at.droni.settings.FlightSequenceSettings
 import at.droni.ui.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 private val Background = DroniColors.Background
@@ -47,13 +51,13 @@ private val Alert = DroniColors.Amber
 fun DroniApp(drone: DroneController) {
     val context = LocalContext.current
     val settings = remember { DroniSettings(context) }
+    val applicationScope = rememberCoroutineScope()
     var page by remember { mutableStateOf("home") }
     var host by remember { mutableStateOf(settings.droneHost) }
     var showGrid by remember { mutableStateOf(settings.gridOverlay) }
-    var defaultSpeed by remember { mutableIntStateOf(settings.defaultDroneSpeed) }
-    var autoCalibration by remember { mutableStateOf(settings.autoCalibrationBeforeTakeoff) }
+    var sequence by remember { mutableStateOf(settings.flightSequence) }
     var leaveFlightConfirm by remember { mutableStateOf(false) }
-    LaunchedEffect(defaultSpeed) { drone.setDefaultSpeedMode(defaultSpeed) }
+    LaunchedEffect(sequence.speedMode) { drone.setDefaultSpeedMode(sequence.speedMode) }
 
     fun navigateHome() {
         if (page == "fly" && drone.takeoffRequested) {
@@ -72,7 +76,11 @@ fun DroniApp(drone: DroneController) {
             text = { Text("Leaving the controls hides live video. A landing request cannot confirm touchdown. Stay in control until safely landed.") },
             confirmButton = {
                 TextButton(onClick = {
-                    drone.land()
+                    applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        try { FlightLaunch(drone).land(sequence) }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { drone.checkResponses("Landing interrupted", drone.responseCount()) }
+                    }
                     leaveFlightConfirm = false
                     page = "home"
                 }) { Text("Request land & leave") }
@@ -83,14 +91,23 @@ fun DroniApp(drone: DroneController) {
     when (page) {
         "fly" -> FlightDeck(drone, host,
             onHostChange = { host = it; settings.droneHost = it },
-            showGrid = showGrid, autoCalibrationBeforeTakeoff = autoCalibration)
-        "settings" -> SettingsScreen(host, drone.connected, showGrid, defaultSpeed, autoCalibration,
+            showGrid = showGrid, sequenceSettings = sequence)
+        "settings" -> SettingsScreen(host, drone.connected || drone.connecting, showGrid, sequence, drone.feedbackStatus,
             onHostChange = { host = it.take(32); settings.droneHost = host },
             onGridChange = { showGrid = it; settings.gridOverlay = it },
-            onSpeedChange = { defaultSpeed = it; settings.defaultDroneSpeed = it; drone.setDefaultSpeedMode(it) },
-            onCalibrationChange = { autoCalibration = it; settings.autoCalibrationBeforeTakeoff = it },
-            onBack = ::navigateHome)
-        "path" -> PathScreen(drone, ::navigateHome)
+            onSequenceChange = { sequence = it; settings.flightSequence = it; drone.setDefaultSpeedMode(it.speedMode) },
+            onShareFeedback = {
+                try {
+                    context.startActivity(android.content.Intent.createChooser(
+                        android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, drone.feedbackReport())
+                        }, "Share drone response log"))
+                } catch (_: android.content.ActivityNotFoundException) {
+                    android.widget.Toast.makeText(context, "No sharing app available", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }, onBack = ::navigateHome)
+        "path" -> PathScreen(drone, host, sequence, ::navigateHome)
         "movies" -> RecordingsScreen(::navigateHome, onOpenFlight = { page = "fly" })
         "about" -> AboutScreen(::navigateHome)
         else -> HomeScreen(drone.connected, onOpen = { page = it })
@@ -99,7 +116,7 @@ fun DroniApp(drone: DroneController) {
 
 /** Drawn routes are screen-space trajectories. The drone has NO verified position feedback. */
 @Composable
-private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
+private fun PathScreen(drone: DroneController, host: String, sequence: FlightSequenceSettings, onBack: () -> Unit) {
     val points = remember { mutableStateListOf<PathPoint>() }
     val plan by remember { derivedStateOf { PathPlanner.plan(points.toList()) } }
     val scope = rememberCoroutineScope()
@@ -108,11 +125,10 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
     var progress by remember { mutableFloatStateOf(0f) }
     var confirmTrial by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Draw one continuous line to describe your route.") }
-    val isMission = mission?.isActive == true
+    val isMission = mission != null
 
     fun abortMission() {
         mission?.cancel()
-        mission = null
         drone.neutral()
         if (drone.connected && drone.takeoffRequested) drone.land()
         message = "Path trial aborted; landing requested (NOT confirmed)."
@@ -133,8 +149,9 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
             title = { Text("Experimental OPEN-LOOP flight") },
             text = { Text("No verified GPS, camera pose, heading or IMU telemetry. " +
                 "The drone cannot follow a true coordinate path or know its endpoint. " +
-                "This sends short, approximate low-strength roll/pitch commands, then " +
-                "requests landing. Calibration does not fix this. " +
+                "${sequence.summary}. " +
+                "The same Settings values apply in Drone Fly. Path roll/pitch is limited to 16%. " +
+                "Climb duration does not establish an altitude. " +
                 "Keep direct visual control, test propeller-off first, and abort if drifting.") },
             confirmButton = { TextButton(onClick = {
                 confirmTrial = false
@@ -142,37 +159,23 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                 simulation = null
                 progress = 0f
                 val steps = plan.toList()
-                mission = scope.launch {
-                    var flightRequested = false
+                val launchJob = scope.launch(start = CoroutineStart.LAZY) {
                     try {
-                        message = "Calibrating on LEVEL surface… (not acknowledged)"
-                        if (!drone.connected || drone.takeoffRequested) error("Drone must be connected and disarmed")
-                        drone.calibrate()
-                        delay(1800)
-                        ensureActive()
-                        message = "Takeoff requested. Waiting for stabilization…"
-                        drone.takeoff()
-                        flightRequested = true
-                        delay(3000)
-                        for ((index, step) in steps.withIndex()) {
-                            ensureActive()
-                            if (!drone.connected) error("Wi-Fi link lost")
-                            drone.setRight(step.roll, step.pitch)
-                            delay(step.durationMs)
-                            drone.setRight(0f, 0f)
-                            delay(PathPlanner.REST_MS)
-                            progress = (index + 1).toFloat() / steps.size
-                            message = "Step ${index + 1}/${steps.size}; no position feedback"
-                        }
-                        message = "Route commands sent. LAND requested; touchdown not verified."
-                    } catch (e: Exception) {
-                        message = "Mission interrupted: ${e.message ?: "cancelled"}"
+                        PathMission(drone).run(steps, host, sequence,
+                            onStatus = { message = it },
+                            onProgress = { progress = it })
+                    } catch (cancelled: CancellationException) {
+                        message = "Path trial cancelled. Controls neutralized."
+                        throw cancelled
+                    } catch (error: Exception) {
+                        message = "Mission interrupted: ${error.message ?: "unknown error"}"
                     } finally {
-                        drone.neutral()
-                        if (flightRequested && drone.connected && drone.takeoffRequested) drone.land()
                         mission = null
                     }
                 }
+                // Assign before starting so immediate validation failure cannot leave a completed job active.
+                mission = launchJob
+                launchJob.start()
             }) { Text("I understand — attempt") } },
             dismissButton = { TextButton(onClick = {
                 confirmTrial = false
@@ -266,8 +269,8 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                 Text("Mission preview", style = MaterialTheme.typography.titleLarge)
                 Text("${points.size} points · ${plan.size} command steps",
                     color = White, fontSize = 12.sp)
-                Text("Maximum deflection 16% · movement ≤ 4.32 s",
-                    fontSize = 11.sp, color = Muted)
+                Text(sequence.summary, fontSize = 11.sp, color = Muted)
+                Text(drone.feedbackStatus, fontSize = 11.sp, color = Alert)
                 Text("A screen sketch, not a measured flight route. Position and altitude are not available.",
                     fontSize = 12.sp, color = Alert, lineHeight = 16.sp)
                 Button(enabled = plan.isNotEmpty() && !isMission, onClick = {
@@ -295,10 +298,16 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                         message = "Drawing cleared."
                     }, modifier = Modifier.fillMaxWidth()
                 ) { Text("Clear drawing") }
-                OutlinedButton(enabled = drone.connected && !drone.takeoffRequested &&
+                OutlinedButton(enabled = (drone.connected || sequence.autoConnect) && !drone.takeoffRequested &&
                     !isMission, onClick = {
-                    drone.calibrate()
-                    message = "Calibration requested; not sensor-verified."
+                    val job = scope.launch(start = CoroutineStart.LAZY) {
+                        try { FlightLaunch(drone).calibrateOnly(host, sequence) { message = it } }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) { message = error.message ?: "Calibration sequence interrupted" }
+                        finally { mission = null }
+                    }
+                    mission = job
+                    job.start()
                 }, modifier = Modifier.fillMaxWidth()) { Text("Calibrate on level surface", fontSize = 12.sp) }
                 if (isMission) {
                     Button(onClick = ::abortMission,
@@ -306,7 +315,7 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()) { Text("ABORT + REQUEST LAND") }
                 } else {
                     Button(
-                        enabled = drone.connected && !drone.takeoffRequested &&
+                        enabled = (drone.connected || sequence.autoConnect) && !drone.takeoffRequested &&
                             plan.isNotEmpty(),
                         onClick = { confirmTrial = true },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8C5F22)),

@@ -15,7 +15,7 @@ data class MissionStep(val roll: Float, val pitch: Float, val durationMs: Long =
 object PathPlanner {
     const val MAX_STEPS = 24
     const val MAX_DEFLECTION = 0.16f
-    const val REST_MS = 160L
+    const val REST_MS = 200L
 
     /**
      * Translate drawn screen directions to bounded, open-loop roll/pitch pulses.
