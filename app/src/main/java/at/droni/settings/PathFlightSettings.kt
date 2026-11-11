@@ -1,16 +1,17 @@
 package at.droni.settings
 
-/** Shared startup configuration for manual flight and Draw Path. Durations use milliseconds. */
-data class FlightSequenceSettings(
+/** Draw Path configuration only. Manual flight keeps its original preferences and controls. */
+data class PathFlightSettings(
     val speedMode: Int = 1,
     val autoConnect: Boolean = true,
-    val connectionWaitMs: Long = 10_000,
+    val connectionWaitMs: Long = 5_000,
     val autoCalibrate: Boolean = true,
-    val calibrationWaitMs: Long = 5_000,
-    val takeoffWaitMs: Long = 5_000,
+    val calibrationWaitMs: Long = 3_000,
+    val takeoffWaitMs: Long = 3_000,
     val climbPercent: Int = 100,
-    val climbDurationMs: Long = 200,
-    val commandGapMs: Long = 200,
+    val climbDurationMs: Long = 300,
+    val commandGapMs: Long = 300,
+    val movementPercent: Int = 75,
     val landingWaitMs: Long = 5_000
 ) {
     init {
@@ -21,10 +22,11 @@ data class FlightSequenceSettings(
         require(climbPercent in 0..100)
         require(climbDurationMs in 50L..1_000L)
         require(commandGapMs in 25L..2_000L)
+        require(movementPercent in 1..75)
         require(landingWaitMs in 1_000L..30_000L)
     }
 
     val summary: String get() = "Speed $speedMode · connect ${connectionWaitMs / 1000} s · " +
         "calibrate ${calibrationWaitMs / 1000} s · takeoff ${takeoffWaitMs / 1000} s · " +
-        "up $climbPercent% / $climbDurationMs ms · gap $commandGapMs ms"
+        "up $climbPercent% / $climbDurationMs ms · move $movementPercent% · gap $commandGapMs ms"
 }

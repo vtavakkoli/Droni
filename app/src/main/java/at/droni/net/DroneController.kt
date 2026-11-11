@@ -86,7 +86,7 @@ class DroneController(private val context: Context) : PathFlightControl {
         private set
     var sentCount by mutableIntStateOf(0)
         private set
-    var speedMode by mutableIntStateOf(DEFAULT_SPEED_MODE)
+    override var speedMode by mutableIntStateOf(DEFAULT_SPEED_MODE)
         private set
     var headless by mutableStateOf(false)
         private set
@@ -275,6 +275,11 @@ class DroneController(private val context: Context) : PathFlightControl {
         axes.climbPulse(SystemClock.elapsedRealtime(), ascent, durationMs)
     }
 
+    override fun pathPulse(roll: Float, pitch: Float, durationMs: Long) {
+        check(connected && takeoffRequested) { "A takeoff request is required before path movement" }
+        axes.pathPulse(SystemClock.elapsedRealtime(), roll, pitch, durationMs)
+    }
+
     /** Called only from the 40 Hz executor, never from the UI thread. */
     private fun sendTick(attempt: Int) {
         if (!transmitting || attempt != generation.get()) return
@@ -320,7 +325,7 @@ class DroneController(private val context: Context) : PathFlightControl {
     }
 
     /** X = roll, Y = pitch (positive is forwards). */
-    override fun setRight(roll: Float, pitch: Float) {
+    fun setRight(roll: Float, pitch: Float) {
         if (!connected) return
         change { current ->
             if (current.takeoff || current.land || current.emergencyStop) current

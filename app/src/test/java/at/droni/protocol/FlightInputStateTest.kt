@@ -53,10 +53,22 @@ class FlightInputStateTest {
     @Test fun fullUpExpiresOnThePacketSenderWithoutAnotherUiUpdate() {
         val state = FlightInputState(ElfieProtocol.Input())
         state.pulse(0) { it.copy(takeoff = true) }
-        state.climbPulse(5000, 1f, 200)
-        assertEquals(1f, state.read(5199).throttle, 0f)
-        assertEquals(0f, state.read(5200).throttle, 0f)
+        state.climbPulse(5000, 1f, 300)
+        assertEquals(1f, state.read(5299).throttle, 0f)
+        assertEquals(0f, state.read(5300).throttle, 0f)
         assertEquals(126, ElfieProtocol.encode(state.read(10000))[2].toInt() and 0xff)
+    }
+
+    @Test fun pathMovementExpiresButManualJoystickInputRemainsOperatorControlled() {
+        val state = FlightInputState(ElfieProtocol.Input())
+        state.pathPulse(1000, .75f, 0f, 180)
+        assertEquals(.75f, state.read(1179).roll, 0f)
+        assertEquals(0f, state.read(1180).roll, 0f)
+        state.update(1200) { it.copy(roll = .4f, throttle = .3f) }
+        assertEquals(.4f, state.read(10000).roll, 0f)
+        assertEquals(.3f, state.read(10000).throttle, 0f)
+        state.update(10001) { it.neutralAxes() }
+        assertEquals(0f, state.read(10001).roll, 0f)
     }
 
     @Test fun emergencyStopOverridesTimedClimbAndKeepsItsOwnDeadline() {

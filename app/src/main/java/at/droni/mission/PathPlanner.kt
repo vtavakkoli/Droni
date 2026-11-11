@@ -14,15 +14,17 @@ data class MissionStep(val roll: Float, val pitch: Float, val durationMs: Long =
 
 object PathPlanner {
     const val MAX_STEPS = 24
-    const val MAX_DEFLECTION = 0.16f
-    const val REST_MS = 200L
+    const val MAX_DEFLECTION = 0.75f
+    const val REST_MS = 300L
 
     /**
      * Translate drawn screen directions to bounded, open-loop roll/pitch pulses.
      * Positions on the drawing DO NOT correspond to real-world meters.
      * No telemetry exists to close the loop; it will not track the drawn coordinates.
      */
-    fun plan(input: List<PathPoint>): List<MissionStep> {
+    fun plan(input: List<PathPoint>, movementPercent: Int = 75): List<MissionStep> {
+        require(movementPercent in 1..75)
+        val strength = movementPercent / 100f
         val clean = input.filter { it.x.isFinite() && it.y.isFinite() }
             .map { it.bounded() }
             .fold(mutableListOf<PathPoint>()) { out, p ->
@@ -46,8 +48,8 @@ object PathPlanner {
             val len = hypot(dx, dy)
             if (len < 1e-5f) continue
             steps += MissionStep(
-                roll = (dx / len) * MAX_DEFLECTION,
-                pitch = (-dy / len) * MAX_DEFLECTION,
+                roll = (dx / len) * strength,
+                pitch = (-dy / len) * strength,
             )
         }
         return steps

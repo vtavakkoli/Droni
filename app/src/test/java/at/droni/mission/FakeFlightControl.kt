@@ -6,6 +6,7 @@ internal class FakeFlightControl : PathFlightControl {
     var now = 0L
     override var connected = false
     override var takeoffRequested = false
+    override var speedMode = 1
     var connectSucceeds = true
     var pending = false
     var replies = 0L
@@ -19,12 +20,14 @@ internal class FakeFlightControl : PathFlightControl {
     override fun cancelPendingConnection() {
         if (pending) { pending = false; events += FlightEvent(now, "cancel connection") }
     }
-    override fun setFlightSpeed(mode: Int) { events += FlightEvent(now, "speed", mode.toFloat()) }
+    override fun setFlightSpeed(mode: Int) { speedMode = mode; events += FlightEvent(now, "speed", mode.toFloat()) }
     override fun neutral() { events += FlightEvent(now, "neutral") }
     override fun calibrate() { events += FlightEvent(now, "calibrate") }
     override fun takeoff() { takeoffRequested = true; events += FlightEvent(now, "takeoff") }
     override fun climbPulse(ascent: Float, durationMs: Long) { events += FlightEvent(now, "climb", ascent, duration = durationMs) }
-    override fun setRight(roll: Float, pitch: Float) { events += FlightEvent(now, "right", roll, pitch) }
+    override fun pathPulse(roll: Float, pitch: Float, durationMs: Long) {
+        events += FlightEvent(now, "right", roll, pitch, durationMs)
+    }
     override fun land() { takeoffRequested = false; events += FlightEvent(now, "land") }
     override fun responseCount(): Long = replies
     override fun checkResponses(phase: String, since: Long): String {

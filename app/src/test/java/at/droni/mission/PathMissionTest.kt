@@ -1,32 +1,32 @@
 package at.droni.mission
 
-import at.droni.settings.FlightSequenceSettings
+import at.droni.settings.PathFlightSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
 class PathMissionTest {
-    private val settings = FlightSequenceSettings()
-    private val route = listOf(MissionStep(.16f, 0f), MissionStep(0f, .16f))
+    private val settings = PathFlightSettings()
+    private val route = listOf(MissionStep(.75f, 0f), MissionStep(0f, .75f))
     private val host = "172.16.10.1"
 
-    @Test fun disconnectedLaunchUsesTenFiveFiveTimingSpeedOneAndChecksEveryStage() = runBlocking {
+    @Test fun disconnectedPathUsesFiveThreeThreeTimingAndSeventyFivePercentMovement() = runBlocking {
         val flight = FakeFlightControl()
         val progress = mutableListOf<Float>()
         PathMission(flight, pause = { flight.advance(it) }).run(route, host, settings, onProgress = { progress += it })
         assertEquals(listOf(
-            FlightEvent(0, "connect"), FlightEvent(10000, "speed", 1f), FlightEvent(10000, "calibrate"),
-            FlightEvent(15000, "takeoff"), FlightEvent(20000, "climb", 1f, duration = 200),
-            FlightEvent(20400, "right", .16f, 0f), FlightEvent(20780, "right", 0f, .16f),
-            FlightEvent(21160, "land")
+            FlightEvent(0, "connect"), FlightEvent(5000, "speed", 1f), FlightEvent(5000, "calibrate"),
+            FlightEvent(8000, "takeoff"), FlightEvent(11000, "climb", 1f, duration = 300),
+            FlightEvent(11600, "right", .75f, 0f, 180), FlightEvent(12080, "right", 0f, .75f, 180),
+            FlightEvent(12560, "land")
         ), flight.events.filter { it.action != "neutral" })
-        assertEquals(26160L, flight.now)
+        assertEquals(17560L, flight.now)
         assertEquals(listOf("Connection", "Calibration", "Takeoff", "Climb", "Path 1", "Path 2", "Landing"), flight.checkedPhases)
         assertEquals(listOf(0f, .5f, 1f), progress)
-        assertTrue(flight.events.contains(FlightEvent(20200, "neutral")))
-        assertTrue(flight.events.contains(FlightEvent(20580, "neutral")))
-        assertTrue(flight.events.contains(FlightEvent(20960, "neutral")))
+        assertTrue(flight.events.contains(FlightEvent(11300, "neutral")))
+        assertTrue(flight.events.contains(FlightEvent(11780, "neutral")))
+        assertTrue(flight.events.contains(FlightEvent(12260, "neutral")))
     }
 
     @Test fun cancellationAtEveryWaitStopsFutureCommandsAndNeutralizes() {
@@ -86,9 +86,27 @@ class PathMissionTest {
         assertEquals("neutral", flight.events.last().action)
     }
 
+    @Test fun pathRestoresManualSpeedAfterLandingOrCancellation() {
+        for (cancel in listOf(false, true)) {
+            val flight = FakeFlightControl().apply { connected = true; speedMode = 0 }
+            var waits = 0
+            try {
+                runBlocking {
+                    PathMission(flight, pause = {
+                        flight.advance(it)
+                        if (cancel && ++waits == 4) throw CancellationException("cancel")
+                    }).run(route, host, settings)
+                }
+            } catch (_: CancellationException) { assertTrue(cancel) }
+            assertEquals(0, flight.speedMode)
+            assertFalse(flight.takeoffRequested)
+            assertEquals(FlightEvent(flight.now, "speed", 0f), flight.events.last())
+        }
+    }
+
     @Test fun invalidOrAlreadyActiveFlightNeverStartsAMission() {
         val invalidRoutes = listOf(emptyList(), listOf(MissionStep(Float.NaN, 0f)),
-            listOf(MissionStep(1f, 0f)), listOf(MissionStep(0f, 0f, 5000L)))
+            listOf(MissionStep(1f, 0f)), listOf(MissionStep(.75f, .75f)), listOf(MissionStep(0f, 0f, 5000L)))
         for (invalid in invalidRoutes) {
             val flight = FakeFlightControl()
             assertThrows(IllegalArgumentException::class.java) {

@@ -47,6 +47,18 @@ internal class FlightInputState(initial: ElfieProtocol.Input) {
     }
 
     fun reset(input: ElfieProtocol.Input) { state.set(State(input)) }
+
+    /** Draw Path movement expires on the sender, without changing manual joystick behavior. */
+    fun pathPulse(nowMs: Long, roll: Float, pitch: Float, durationMs: Long) {
+        require(roll.isFinite() && pitch.isFinite() && kotlin.math.hypot(roll, pitch) <= .7501f)
+        require(durationMs in 1L..180L)
+        state.updateAndGet { old ->
+            val current = old.at(nowMs)
+            check(!current.input.takeoff && !current.input.land && !current.input.emergencyStop)
+            current.copy(input = current.input.neutralAxes().copy(roll = roll, pitch = pitch),
+                axesUntilMs = nowMs + durationMs)
+        }
+    }
 }
 
 private fun ElfieProtocol.Input.withoutCommands() = copy(
