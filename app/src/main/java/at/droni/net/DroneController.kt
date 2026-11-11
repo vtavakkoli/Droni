@@ -13,6 +13,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import at.droni.protocol.ElfieProtocol
+import at.droni.protocol.FlightInputState
+import at.droni.mission.PathFlightControl
 import at.droni.video.ElfieVideo
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -31,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * UDP local send success does NOT imply a radio/drone acknowledgement.
  * Written by Dr. Vahid Tavakkoli.
  */
-class DroneController(private val context: Context) {
+class DroneController(private val context: Context) : PathFlightControl {
     private companion object { const val DEFAULT_SPEED_MODE = 1 }
 
     @Volatile private var defaultSpeedMode = DEFAULT_SPEED_MODE
@@ -47,17 +49,16 @@ class DroneController(private val context: Context) {
     }
 
     private val ui = Handler(Looper.getMainLooper())
-    private val axes = AtomicReference(ElfieProtocol.Input(speedMode = DEFAULT_SPEED_MODE))
+    private val axes = FlightInputState(ElfieProtocol.Input(speedMode = DEFAULT_SPEED_MODE))
     private val packetCounter = AtomicInteger(0)
     private val lock = Any()
 
     @Volatile private var transmitting = false
     @Volatile private var socket: DatagramSocket? = null
     @Volatile private var address: InetSocketAddress? = null
-    @Volatile private var commandExpires = 0L
     private var worker: ScheduledExecutorService? = null
 
-    var connected by mutableStateOf(false)
+    override var connected by mutableStateOf(false)
         private set
     var linkStatus by mutableStateOf("Connect to the drone Wi-Fi, then tap Connect.")
         private set
@@ -75,7 +76,7 @@ class DroneController(private val context: Context) {
         private set
     var reverseDirection by mutableStateOf(false)
         private set
-    var takeoffRequested by mutableStateOf(false)
+    override var takeoffRequested by mutableStateOf(false)
         private set
 
     val video = ElfieVideo(context,
@@ -153,10 +154,9 @@ class DroneController(private val context: Context) {
                 synchronized(lock) {
                     socket = udp
                     address = target
-                    axes.set(ElfieProtocol.Input(speedMode = speedMode, reverseDirection = reverseDirection))
+                    axes.reset(ElfieProtocol.Input(speedMode = speedMode, reverseDirection = reverseDirection))
                     packetCounter.set(0)
                     sentCount = 0
-                    commandExpires = 0L
                     lastErrorMsg = null
                     transmitting = true
                     val scheduler = Executors.newSingleThreadScheduledExecutor { task ->
@@ -194,13 +194,7 @@ class DroneController(private val context: Context) {
         if (!transmitting) return
         try {
             val now = SystemClock.elapsedRealtime()
-            val packetInput = axes.updateAndGet { prior ->
-                if (now > commandExpires &&
-                    (prior.takeoff || prior.land || prior.emergencyStop || prior.calibrate)) {
-                    prior.copy(takeoff = false, land = false, emergencyStop = false,
-                        calibrate = false)
-                } else prior
-            }
+            val packetInput = axes.read(now)
             val payload = ElfieProtocol.encode(packetInput)
             val udp = socket ?: return
             val to = address ?: return
@@ -225,39 +219,37 @@ class DroneController(private val context: Context) {
     }
 
     private fun change(transform: (ElfieProtocol.Input) -> ElfieProtocol.Input) {
-        axes.updateAndGet { transform(it) }
+        axes.update(SystemClock.elapsedRealtime(), transform)
     }
 
     /** X = yaw, Y = ascent/descent (positive is upwards). */
-    fun setLeft(x: Float, y: Float) {
+    override fun setLeft(yaw: Float, ascent: Float) {
         if (!connected) return
         change { current ->
             if (current.takeoff || current.land || current.emergencyStop) current
-            else current.copy(yaw = x.coerceIn(-1f, 1f),
-                throttle = y.coerceIn(-1f, 1f))
+            else current.copy(yaw = yaw.coerceIn(-1f, 1f),
+                throttle = ascent.coerceIn(-1f, 1f))
         }
     }
 
     /** X = roll, Y = pitch (positive is forwards). */
-    fun setRight(x: Float, y: Float) {
+    override fun setRight(roll: Float, pitch: Float) {
         if (!connected) return
         change { current ->
             if (current.takeoff || current.land || current.emergencyStop) current
-            else current.copy(roll = x.coerceIn(-1f, 1f),
-                pitch = y.coerceIn(-1f, 1f))
+            else current.copy(roll = roll.coerceIn(-1f, 1f),
+                pitch = pitch.coerceIn(-1f, 1f))
         }
     }
 
     /** Prevent stale stick deflection when a pointer, Activity, or network is lost. */
-    fun neutral() = change { it.neutralAxes() }
+    override fun neutral() = change { it.neutralAxes() }
 
     private fun pulse(transform: (ElfieProtocol.Input) -> ElfieProtocol.Input) {
-        neutral()
-        commandExpires = SystemClock.elapsedRealtime() + 1000L
-        change(transform)
+        axes.pulse(SystemClock.elapsedRealtime(), transform)
     }
 
-    fun takeoff() {
+    override fun takeoff() {
         if (!connected || takeoffRequested) return
         takeoffRequested = true
         pulse { it.copy(altitudeHold = true, takeoff = true, land = false,
@@ -265,7 +257,7 @@ class DroneController(private val context: Context) {
         linkStatus = "TAKEOFF requested, altitude hold selected (not acknowledged)"
     }
 
-    fun land() {
+    override fun land() {
         if (!connected) return
         takeoffRequested = false
         pulse { it.copy(land = true, takeoff = false, emergencyStop = false) }
@@ -281,7 +273,7 @@ class DroneController(private val context: Context) {
     }
 
     /** Calibration only while disarmed and stationary. */
-    fun calibrate() {
+    override fun calibrate() {
         if (!connected || takeoffRequested) return
         pulse { it.copy(calibrate = true) }
         linkStatus = "Calibration requested (stationary drone, not acknowledged)"
@@ -327,8 +319,7 @@ class DroneController(private val context: Context) {
             }
             socket = null
             address = null
-            axes.set(ElfieProtocol.Input(speedMode = defaultSpeedMode, reverseDirection = reverseDirection))
-            commandExpires = 0L
+            axes.reset(ElfieProtocol.Input(speedMode = defaultSpeedMode, reverseDirection = reverseDirection))
         }
         takeoffRequested = false
         speedMode = defaultSpeedMode

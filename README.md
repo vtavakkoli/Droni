@@ -23,7 +23,7 @@ Droni brings hands-on flight control, first-person video, camera recording, a dr
 | **Splash + Home** | Branded splash, refined home with quick-access cards | Implemented |
 | **Drone Fly** | Transparent dual-joystick FPV layout, takeoff, land, motor stop, speed, headless, disarmed calibration, reversal | Implemented; physical validation needed |
 | **Draw Path** | Finger-drawn route, constrained preview, animated simulation | Implemented |
-| **Experimental Path Trial** | Level-calibration request → takeoff request → short bounded screen-direction commands → landing request, with abort | **OPEN LOOP. Not real path following; safety/landing unverified** |
+| **Experimental Path Trial** | Calibrate → wait 1 s → takeoff → wait 1 s → 100% up for 200 ms → bounded route with 200 ms neutral gaps → landing request | **OPEN LOOP. Not real path following; safety/landing unverified** |
 | **Recordings** | MP4 capture, asynchronous video library, thumbnails, play and share | Implemented; verify with real camera |
 | **Settings** | Persistent Wi-Fi gateway, default speed 0/1/2, optional auto-calibration before manual takeoff, framing grid | Implemented |
 | **About** | Project credits, copyright, source and license | Implemented |
@@ -75,6 +75,8 @@ Gradle wrapper properties are provided; its binary bootstrap JAR is not committe
 In **Settings**, choose the persistent default speed (0, 1, or 2; initially **1**). You may also enable **Auto-calibrate before takeoff** (off by default). With this enabled, a manual Take Off first sends a calibration request while the drone is disarmed, waits approximately 1.8 seconds, then sends takeoff only if the same flight screen remains active and connected. Calibration is unacknowledged; it does not verify physical orientation or position. Keep the drone stationary and level. Experimental Draw Path missions have their own calibration step.
 
 In **Drone Fly**, **REC MP4** is on the top bar; Android Back returns to the home menu. Recordings remain available from the main menu.
+
+**Draw Path launch:** calibration request → wait **1 second** → takeoff request → wait **1 second** → **100% upward stick input for 200 ms** → vertical neutral → **200 ms** neutral gap → route pulses. Each route pulse is at most 180 ms at 16% roll/pitch, followed by a 200 ms neutral gap. All axes are neutralized before the final landing request. The climb pulse is time-based; no actual height is measured. Continuous 40 Hz UDP transmission remains active during these waits.
 
 ## Connect a drone
 

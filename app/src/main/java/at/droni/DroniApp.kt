@@ -24,14 +24,16 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import at.droni.mission.PathMission
 import at.droni.mission.PathPlanner
 import at.droni.mission.PathPoint
 import at.droni.net.DroneController
 import at.droni.settings.DroniSettings
 import at.droni.ui.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 private val Background = DroniColors.Background
@@ -108,11 +110,10 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
     var progress by remember { mutableFloatStateOf(0f) }
     var confirmTrial by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Draw one continuous line to describe your route.") }
-    val isMission = mission?.isActive == true
+    val isMission = mission != null
 
     fun abortMission() {
         mission?.cancel()
-        mission = null
         drone.neutral()
         if (drone.connected && drone.takeoffRequested) drone.land()
         message = "Path trial aborted; landing requested (NOT confirmed)."
@@ -133,8 +134,10 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
             title = { Text("Experimental OPEN-LOOP flight") },
             text = { Text("No verified GPS, camera pose, heading or IMU telemetry. " +
                 "The drone cannot follow a true coordinate path or know its endpoint. " +
-                "This sends short, approximate low-strength roll/pitch commands, then " +
-                "requests landing. Calibration does not fix this. " +
+                "Sequence: calibrate, wait 1 s; takeoff, wait 1 s; " +
+                "100% climb input for 200 ms, then neutral; follow the drawing with " +
+                "200 ms neutral gaps and request landing. Path roll/pitch is limited to 16%. " +
+                "Climb duration does not establish an altitude. " +
                 "Keep direct visual control, test propeller-off first, and abort if drifting.") },
             confirmButton = { TextButton(onClick = {
                 confirmTrial = false
@@ -142,37 +145,23 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                 simulation = null
                 progress = 0f
                 val steps = plan.toList()
-                mission = scope.launch {
-                    var flightRequested = false
+                val launchJob = scope.launch(start = CoroutineStart.LAZY) {
                     try {
-                        message = "Calibrating on LEVEL surface… (not acknowledged)"
-                        if (!drone.connected || drone.takeoffRequested) error("Drone must be connected and disarmed")
-                        drone.calibrate()
-                        delay(1800)
-                        ensureActive()
-                        message = "Takeoff requested. Waiting for stabilization…"
-                        drone.takeoff()
-                        flightRequested = true
-                        delay(3000)
-                        for ((index, step) in steps.withIndex()) {
-                            ensureActive()
-                            if (!drone.connected) error("Wi-Fi link lost")
-                            drone.setRight(step.roll, step.pitch)
-                            delay(step.durationMs)
-                            drone.setRight(0f, 0f)
-                            delay(PathPlanner.REST_MS)
-                            progress = (index + 1).toFloat() / steps.size
-                            message = "Step ${index + 1}/${steps.size}; no position feedback"
-                        }
-                        message = "Route commands sent. LAND requested; touchdown not verified."
-                    } catch (e: Exception) {
-                        message = "Mission interrupted: ${e.message ?: "cancelled"}"
+                        PathMission(drone).run(steps,
+                            onStatus = { message = it },
+                            onProgress = { progress = it })
+                    } catch (cancelled: CancellationException) {
+                        message = "Path trial cancelled. Controls neutralized."
+                        throw cancelled
+                    } catch (error: Exception) {
+                        message = "Mission interrupted: ${error.message ?: "unknown error"}"
                     } finally {
-                        drone.neutral()
-                        if (flightRequested && drone.connected && drone.takeoffRequested) drone.land()
                         mission = null
                     }
                 }
+                // Assign before starting so immediate validation failure cannot leave a completed job active.
+                mission = launchJob
+                launchJob.start()
             }) { Text("I understand — attempt") } },
             dismissButton = { TextButton(onClick = {
                 confirmTrial = false
@@ -266,7 +255,11 @@ private fun PathScreen(drone: DroneController, onBack: () -> Unit) {
                 Text("Mission preview", style = MaterialTheme.typography.titleLarge)
                 Text("${points.size} points · ${plan.size} command steps",
                     color = White, fontSize = 12.sp)
-                Text("Maximum deflection 16% · movement ≤ 4.32 s",
+                Text("Start: calibrate → 1 s → takeoff → 1 s",
+                    fontSize = 11.sp, color = Muted)
+                Text("Climb: 100% for 200 ms, then neutral",
+                    fontSize = 11.sp, color = Alert)
+                Text("Path: ≤ 16% · 200 ms neutral gaps",
                     fontSize = 11.sp, color = Muted)
                 Text("A screen sketch, not a measured flight route. Position and altitude are not available.",
                     fontSize = 12.sp, color = Alert, lineHeight = 16.sp)
