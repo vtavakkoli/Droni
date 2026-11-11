@@ -33,13 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import at.droni.ui.*
-import at.droni.mission.FlightLaunch
-import at.droni.settings.FlightSequenceSettings
 import at.droni.net.DroneController
 import at.droni.protocol.ElfieProtocol
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -92,57 +87,53 @@ internal fun FlightDeck(
     host: String,
     onHostChange: (String) -> Unit,
     showGrid: Boolean,
-    sequenceSettings: FlightSequenceSettings
+    autoCalibrationBeforeTakeoff: Boolean
 ) {
     val scope = rememberCoroutineScope()
     var preflightJob by remember { mutableStateOf<Job?>(null) }
     var calibrating by remember { mutableStateOf(false) }
     var preflightSequence by remember { mutableIntStateOf(0) }
-    var preflightStatus by remember { mutableStateOf("") }
 
     val cancelPreflight: () -> Unit = {
         preflightSequence++
         preflightJob?.cancel()
-        drone.cancelPendingConnection()
+        preflightJob = null
         calibrating = false
     }
-    DisposableEffect(Unit) {
-        onDispose { preflightJob?.cancel(); drone.cancelPendingConnection() }
-    }
 
-    fun startAction(action: suspend () -> Unit) {
-        if (calibrating) return
-        val previous = preflightJob
-        val sequence = ++preflightSequence
-        calibrating = true
-        val job = scope.launch(start = CoroutineStart.LAZY) {
-            try {
-                // Do not let cleanup from an older cancelled sequence touch a newer connection.
-                previous?.cancelAndJoin()
-                action()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                preflightStatus = "Launch failed: ${error.message ?: "unknown error"}"
-            } finally {
-                if (sequence == preflightSequence) {
-                    calibrating = false
-                    preflightJob = null
-                }
-            }
-        }
-        preflightJob = job
-        job.start()
+    // No takeoff can be queued after leaving the deck or disconnecting.
+    DisposableEffect(Unit) {
+        onDispose { preflightJob?.cancel() }
+    }
+    LaunchedEffect(drone.connected) {
+        if (!drone.connected) cancelPreflight()
     }
 
     val requestTakeoff: () -> Unit = {
-        if (!drone.takeoffRequested && !calibrating) startAction {
-            FlightLaunch(drone).run(host, sequenceSettings) { preflightStatus = it }
-        }
-    }
-    val requestCalibration: () -> Unit = {
-        if (!drone.takeoffRequested && !calibrating) startAction {
-            FlightLaunch(drone).calibrateOnly(host, sequenceSettings) { preflightStatus = it }
+        if (drone.connected && !drone.takeoffRequested && !calibrating) {
+            if (autoCalibrationBeforeTakeoff) {
+                calibrating = true
+                val sequence = ++preflightSequence
+                preflightJob = scope.launch {
+                    try {
+                        drone.neutral()
+                        drone.calibrate() // Disarmed; this request is not acknowledged.
+                        delay(1_800L)  // Calibration flag expires before takeoff request.
+                        ensureActive()
+                        if (sequence == preflightSequence &&
+                            drone.connected && !drone.takeoffRequested) {
+                            drone.takeoff()
+                        }
+                    } finally {
+                        if (sequence == preflightSequence) {
+                            calibrating = false
+                            preflightJob = null
+                        }
+                    }
+                }
+            } else {
+                drone.takeoff()
+            }
         }
     }
 
@@ -229,14 +220,10 @@ internal fun FlightDeck(
                         drone = drone,
                         modifier = Modifier.width(consoleWidth),
                         preflightCalibrating = calibrating,
-                        canAutoConnect = sequenceSettings.autoConnect,
-                        onCalibrate = requestCalibration,
                         onTakeoff = requestTakeoff,
                         onLand = {
                             cancelPreflight()
-                            startAction {
-                                FlightLaunch(drone).land(sequenceSettings) { preflightStatus = it }
-                            }
+                            drone.land()
                         },
                         onMotorStop = {
                             cancelPreflight()
@@ -254,7 +241,7 @@ internal fun FlightDeck(
                 }
 
                 Spacer(Modifier.height(8.dp))
-                DeckStatus(drone, if (calibrating || preflightStatus.startsWith("Launch failed")) preflightStatus else null)
+                DeckStatus(drone)
             }
 
         }
@@ -317,7 +304,7 @@ private fun DeckHeader(
             BasicTextField(
                 value = host,
                 onValueChange = onHostChange,
-                enabled = !drone.connected && !drone.connecting,
+                enabled = !drone.connected,
                 singleLine = true,
                 textStyle = androidx.compose.ui.text.TextStyle(
                     color = Pale, fontSize = 12.sp, fontWeight = FontWeight.Medium
@@ -348,7 +335,7 @@ private fun DeckHeader(
                 fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
 
-        if (drone.connected || drone.connecting) {
+        if (drone.connected) {
             OutlinedButton(
                 onClick = onDisconnect,
                 modifier = Modifier.width(96.dp).height(48.dp),
@@ -356,7 +343,7 @@ private fun DeckHeader(
                 border = BorderStroke(1.dp, Pale.copy(alpha = 0.40f)),
                 contentPadding = PaddingValues(horizontal = 4.dp)
             ) {
-                Text(if (drone.connecting) "Cancel" else "Disconnect", fontSize = 11.sp, maxLines = 1)
+                Text("Disconnect", fontSize = 11.sp, maxLines = 1)
             }
         } else {
             Button(
@@ -380,8 +367,6 @@ private fun FlightConsole(
     drone: DroneController,
     modifier: Modifier = Modifier,
     preflightCalibrating: Boolean,
-    canAutoConnect: Boolean,
-    onCalibrate: () -> Unit,
     onTakeoff: () -> Unit,
     onLand: () -> Unit,
     onMotorStop: () -> Unit
@@ -408,7 +393,7 @@ private fun FlightConsole(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(
                 modifier = Modifier.weight(1f).height(48.dp),
-                enabled = (drone.connected || canAutoConnect) && !drone.takeoffRequested && !preflightCalibrating,
+                enabled = drone.connected && !drone.takeoffRequested && !preflightCalibrating,
                 onClick = onTakeoff,
                 shape = RoundedCornerShape(9.dp),
                 contentPadding = PaddingValues(horizontal = 2.dp),
@@ -418,12 +403,12 @@ private fun FlightConsole(
                     disabledContentColor = Pale.copy(alpha = 0.55f)
                 )
             ) {
-                Text(if (preflightCalibrating) "STARTING…" else "TAKE OFF", fontSize = 10.sp,
+                Text(if (preflightCalibrating) "CALIBRATING" else "TAKE OFF", fontSize = 10.sp,
                     fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Button(
                 modifier = Modifier.weight(1f).height(48.dp),
-                enabled = drone.connected || drone.connecting || preflightCalibrating,
+                enabled = drone.connected,
                 onClick = onLand,
                 shape = RoundedCornerShape(9.dp),
                 contentPadding = PaddingValues(horizontal = 2.dp),
@@ -454,22 +439,22 @@ private fun FlightConsole(
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             ConsoleOption(
-                label = "SPD ${drone.speedMode}/2", enabled = drone.connected && !preflightCalibrating,
+                label = "SPD ${drone.speedMode}/2", enabled = drone.connected,
                 onClick = drone::cycleSpeed, modifier = Modifier.weight(1f)
             )
             ConsoleOption(
                 label = "HEAD ${if (drone.headless) "ON" else "OFF"}",
-                enabled = drone.connected && !preflightCalibrating, active = drone.headless,
+                enabled = drone.connected, active = drone.headless,
                 onClick = drone::toggleHeadless, modifier = Modifier.weight(1.2f)
             )
             ConsoleOption(
                 label = "CALIBRATE",
-                enabled = (drone.connected || canAutoConnect) && !drone.takeoffRequested && !preflightCalibrating,
-                onClick = onCalibrate, modifier = Modifier.weight(1.25f)
+                enabled = drone.connected && !drone.takeoffRequested && !preflightCalibrating,
+                onClick = drone::calibrate, modifier = Modifier.weight(1.25f)
             )
             ConsoleOption(
                 label = if (drone.reverseDirection) "REVERSE" else "NORMAL",
-                enabled = drone.connected && !drone.takeoffRequested && !preflightCalibrating,
+                enabled = drone.connected && !drone.takeoffRequested,
                 active = drone.reverseDirection,
                 onClick = drone::toggleReverse, modifier = Modifier.weight(1.15f)
             )
@@ -529,7 +514,7 @@ private fun StickDock(
 }
 
 @Composable
-private fun DeckStatus(drone: DroneController, activeStatus: String? = null) {
+private fun DeckStatus(drone: DroneController) {
     val corner = RoundedCornerShape(9.dp)
     Row(
         modifier = Modifier
@@ -540,10 +525,10 @@ private fun DeckStatus(drone: DroneController, activeStatus: String? = null) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(activeStatus ?: drone.linkStatus, modifier = Modifier.weight(1f),
+        Text(drone.linkStatus, modifier = Modifier.weight(1f),
             fontSize = 10.sp, color = Warning,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("RX ${drone.receivedCount} · ACK unverified", fontSize = 9.sp,
+        Text("UDP 8080  ·  25 ms", fontSize = 9.sp,
             color = Pale.copy(alpha = 0.63f), maxLines = 1)
     }
 }

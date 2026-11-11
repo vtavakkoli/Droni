@@ -8,7 +8,7 @@ type, shapes and shared components live in `app/src/main/java/at/droni/ui/`.
 - **Flight deck:** full-screen camera, transparent overlays, borderless gateway
   entry, recording in the header, and 48 dp action targets. Android Back returns
   home; leaving after takeoff retains the landing-request confirmation.
-- **Settings:** shared startup timings and input strength for both flight screens, incoming response checks, camera and connection preferences. Speed selection
+- **Settings:** original manual flight preferences and separate Draw Path timings/input strength, incoming response checks, camera and connection preferences. Speed selection
   and switches expose their state and labels to accessibility services.
 - **Draw path:** a dedicated canvas, start/finish markers and a separate preview
   panel. Redrawing or clearing cancels the current simulation. Experimental
@@ -27,7 +27,7 @@ No interface element invents battery, altitude, position or landing measurements
 
 The **Android UI** pull-request workflow runs an offline emulator navigation test.
 It checks preference persistence across activity recreation, route drawing and
-clearing, and takeoff availability under auto-connect settings and disabled landing/motor stop while disconnected. It
+clearing, independent manual/path preferences, and disabled manual flight actions while disconnected. It
 does not connect to an aircraft. Its `droni-ui-review` artifact includes six PNGs
 and the instrumentation report.
 

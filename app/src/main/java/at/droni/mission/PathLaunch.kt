@@ -1,12 +1,12 @@
 package at.droni.mission
 
-import at.droni.settings.FlightSequenceSettings
+import at.droni.settings.PathFlightSettings
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 
-/** One startup procedure shared by the flight deck and the path runner. */
-internal class FlightLaunch(
+/** Draw Path startup. The manual flight deck does not invoke this procedure. */
+internal class PathLaunch(
     private val control: PathFlightControl,
     private val pause: suspend (Long) -> Unit = { delay(it) }
 ) {
@@ -23,7 +23,7 @@ internal class FlightLaunch(
         finally { status(control.checkResponses(phase, baseline)) }
     }
 
-    private suspend fun connection(host: String, settings: FlightSequenceSettings, status: (String) -> Unit) {
+    private suspend fun connection(host: String, settings: PathFlightSettings, status: (String) -> Unit) {
         currentCoroutineContext().ensureActive()
         check(!control.takeoffRequested) { "Land before starting a new launch sequence" }
         val baseline = if (control.connected) control.responseCount() else 0L
@@ -37,7 +37,7 @@ internal class FlightLaunch(
         control.neutral()
     }
 
-    private suspend fun calibration(settings: FlightSequenceSettings, status: (String) -> Unit) {
+    private suspend fun calibration(settings: PathFlightSettings, status: (String) -> Unit) {
         val baseline = control.responseCount()
         status("Calibration requested · waiting ${settings.calibrationWaitMs / 1000} s")
         control.calibrate()
@@ -45,17 +45,20 @@ internal class FlightLaunch(
         check(!control.takeoffRequested) { "Flight started during calibration" }
     }
 
-    suspend fun calibrateOnly(host: String, settings: FlightSequenceSettings, onStatus: (String) -> Unit) {
+    suspend fun calibrateOnly(host: String, settings: PathFlightSettings, onStatus: (String) -> Unit) {
+        val previousSpeed = control.speedMode
         try {
             connection(host, settings, onStatus)
             calibration(settings, onStatus)
         } finally {
             control.neutral()
             control.cancelPendingConnection()
+            if (control.connected && !control.takeoffRequested && control.speedMode != previousSpeed)
+                control.setFlightSpeed(previousSpeed)
         }
     }
 
-    suspend fun run(host: String, settings: FlightSequenceSettings, onStatus: (String) -> Unit = {}) {
+    suspend fun run(host: String, settings: PathFlightSettings, onStatus: (String) -> Unit = {}) {
         var requestedHere = false
         var completed = false
         try {
@@ -79,7 +82,7 @@ internal class FlightLaunch(
             }
             waitFor(settings.commandGapMs, airborneRequest = true)
             completed = true
-            onStatus("Launch requests complete · manual controls ready · ACK unverified")
+            onStatus("Path launch requests complete · starting route · ACK unverified")
         } finally {
             control.neutral()
             control.cancelPendingConnection()
@@ -87,7 +90,7 @@ internal class FlightLaunch(
         }
     }
 
-    suspend fun land(settings: FlightSequenceSettings, onStatus: (String) -> Unit = {}) {
+    suspend fun land(settings: PathFlightSettings, onStatus: (String) -> Unit = {}) {
         if (!control.connected) { control.cancelPendingConnection(); control.neutral(); return }
         val baseline = control.responseCount()
         control.neutral()

@@ -24,9 +24,10 @@ Build **before** connecting the phone to the drone network.
 
 ## Validation
 - `testDebugUnitTest` checks exact, known 11-byte Android protocol vectors.
-- Path mission tests check the shared configurable connection/calibration/takeoff waits, bounded
-  100% climb pulse, 200 ms neutral gaps, and interruption cleanup. Command-state
+- Path mission tests check Draw Path's 5/3/3-second startup waits, 100% climb for
+  300 ms, movement at 75%, 300 ms neutral gaps, and interruption cleanup. Command-state
   tests cover accepting axes exactly when a pulse expires, before the next UDP tick.
+- Emulator checks verify that legacy manual preferences survive the upgrade and remain independent of path settings.
 - `assembleDebug` compiles an installable debug APK.
 - Physical takeoff, video stream, firmware variants, crash recovery, and wireless
   timing must be validated against the actual JJRC Elfie.

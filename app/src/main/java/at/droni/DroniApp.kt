@@ -24,13 +24,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import at.droni.mission.FlightLaunch
+import at.droni.mission.PathLaunch
 import at.droni.mission.PathMission
 import at.droni.mission.PathPlanner
 import at.droni.mission.PathPoint
 import at.droni.net.DroneController
 import at.droni.settings.DroniSettings
-import at.droni.settings.FlightSequenceSettings
+import at.droni.settings.PathFlightSettings
 import at.droni.ui.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -51,13 +51,14 @@ private val Alert = DroniColors.Amber
 fun DroniApp(drone: DroneController) {
     val context = LocalContext.current
     val settings = remember { DroniSettings(context) }
-    val applicationScope = rememberCoroutineScope()
     var page by remember { mutableStateOf("home") }
     var host by remember { mutableStateOf(settings.droneHost) }
     var showGrid by remember { mutableStateOf(settings.gridOverlay) }
-    var sequence by remember { mutableStateOf(settings.flightSequence) }
+    var defaultSpeed by remember { mutableIntStateOf(settings.defaultDroneSpeed) }
+    var autoCalibration by remember { mutableStateOf(settings.autoCalibrationBeforeTakeoff) }
+    var sequence by remember { mutableStateOf(settings.pathFlight) }
     var leaveFlightConfirm by remember { mutableStateOf(false) }
-    LaunchedEffect(sequence.speedMode) { drone.setDefaultSpeedMode(sequence.speedMode) }
+    LaunchedEffect(defaultSpeed) { drone.setDefaultSpeedMode(defaultSpeed) }
 
     fun navigateHome() {
         if (page == "fly" && drone.takeoffRequested) {
@@ -76,11 +77,8 @@ fun DroniApp(drone: DroneController) {
             text = { Text("Leaving the controls hides live video. A landing request cannot confirm touchdown. Stay in control until safely landed.") },
             confirmButton = {
                 TextButton(onClick = {
-                    applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                        try { FlightLaunch(drone).land(sequence) }
-                        catch (cancelled: CancellationException) { throw cancelled }
-                        catch (_: Exception) { drone.checkResponses("Landing interrupted", drone.responseCount()) }
-                    }
+                    drone.neutral()
+                    drone.land()
                     leaveFlightConfirm = false
                     page = "home"
                 }) { Text("Request land & leave") }
@@ -91,11 +89,14 @@ fun DroniApp(drone: DroneController) {
     when (page) {
         "fly" -> FlightDeck(drone, host,
             onHostChange = { host = it; settings.droneHost = it },
-            showGrid = showGrid, sequenceSettings = sequence)
-        "settings" -> SettingsScreen(host, drone.connected || drone.connecting, showGrid, sequence, drone.feedbackStatus,
+            showGrid = showGrid, autoCalibrationBeforeTakeoff = autoCalibration)
+        "settings" -> SettingsScreen(host, drone.connected || drone.connecting, showGrid,
+            defaultSpeed, autoCalibration, sequence, drone.feedbackStatus,
             onHostChange = { host = it.take(32); settings.droneHost = host },
             onGridChange = { showGrid = it; settings.gridOverlay = it },
-            onSequenceChange = { sequence = it; settings.flightSequence = it; drone.setDefaultSpeedMode(it.speedMode) },
+            onDefaultSpeedChange = { defaultSpeed = it; settings.defaultDroneSpeed = it },
+            onAutoCalibrationChange = { autoCalibration = it; settings.autoCalibrationBeforeTakeoff = it },
+            onSequenceChange = { sequence = it; settings.pathFlight = it },
             onShareFeedback = {
                 try {
                     context.startActivity(android.content.Intent.createChooser(
@@ -116,9 +117,9 @@ fun DroniApp(drone: DroneController) {
 
 /** Drawn routes are screen-space trajectories. The drone has NO verified position feedback. */
 @Composable
-private fun PathScreen(drone: DroneController, host: String, sequence: FlightSequenceSettings, onBack: () -> Unit) {
+private fun PathScreen(drone: DroneController, host: String, sequence: PathFlightSettings, onBack: () -> Unit) {
     val points = remember { mutableStateListOf<PathPoint>() }
-    val plan by remember { derivedStateOf { PathPlanner.plan(points.toList()) } }
+    val plan by remember(sequence.movementPercent) { derivedStateOf { PathPlanner.plan(points.toList(), sequence.movementPercent) } }
     val scope = rememberCoroutineScope()
     var simulation by remember { mutableStateOf<Job?>(null) }
     var mission by remember { mutableStateOf<Job?>(null) }
@@ -150,7 +151,7 @@ private fun PathScreen(drone: DroneController, host: String, sequence: FlightSeq
             text = { Text("No verified GPS, camera pose, heading or IMU telemetry. " +
                 "The drone cannot follow a true coordinate path or know its endpoint. " +
                 "${sequence.summary}. " +
-                "The same Settings values apply in Drone Fly. Path roll/pitch is limited to 16%. " +
+                "These settings apply only to Draw Path. Path movement is ${sequence.movementPercent}%. " +
                 "Climb duration does not establish an altitude. " +
                 "Keep direct visual control, test propeller-off first, and abort if drifting.") },
             confirmButton = { TextButton(onClick = {
@@ -301,7 +302,7 @@ private fun PathScreen(drone: DroneController, host: String, sequence: FlightSeq
                 OutlinedButton(enabled = (drone.connected || sequence.autoConnect) && !drone.takeoffRequested &&
                     !isMission, onClick = {
                     val job = scope.launch(start = CoroutineStart.LAZY) {
-                        try { FlightLaunch(drone).calibrateOnly(host, sequence) { message = it } }
+                        try { PathLaunch(drone).calibrateOnly(host, sequence) { message = it } }
                         catch (cancelled: CancellationException) { throw cancelled }
                         catch (error: Exception) { message = error.message ?: "Calibration sequence interrupted" }
                         finally { mission = null }
