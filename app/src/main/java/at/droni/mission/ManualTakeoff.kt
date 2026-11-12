@@ -13,7 +13,7 @@ interface ManualFlightControl {
     fun takeoff()
 }
 
-/** A one-second calibration command pulse followed by a full three-second settling wait. */
+/** Requests calibration and waits three seconds in total before manual takeoff. */
 internal class ManualTakeoff(
     private val control: ManualFlightControl,
     private val pause: suspend (Long) -> Unit = { delay(it) }
