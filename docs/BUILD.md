@@ -28,6 +28,7 @@ Build **before** connecting the phone to the drone network.
   300 ms, movement at 75%, 300 ms neutral gaps, and interruption cleanup. Command-state
   tests cover accepting axes exactly when a pulse expires, before the next UDP tick.
 - Emulator checks verify that legacy manual preferences survive the upgrade and remain independent of path settings.
+- Manual takeoff tests check the full three-second calibration wait, cancellation, disconnection and superseded requests. Protocol tests include source-derived vectors from the uploaded original app.
 - `assembleDebug` compiles an installable debug APK.
 - Physical takeoff, video stream, firmware variants, crash recovery, and wireless
   timing must be validated against the actual JJRC Elfie.

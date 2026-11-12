@@ -7,7 +7,7 @@
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Android-7F52FF?logo=kotlin"/>
   <img alt="Android API" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android"/>
   <img alt="License" src="https://img.shields.io/badge/License-MIT-6CE7D0"/>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.3.1-47C5F7"/>
+  <img alt="Version" src="https://img.shields.io/badge/version-0.3.2-47C5F7"/>
 </p>
 
 <h1 align="center">Droni</h1>
@@ -74,7 +74,9 @@ Gradle wrapper properties are provided; its binary bootstrap JAR is not committe
 
 ### Flight deck
 
-Version **0.3.1** restores the manual Flight Deck screen and takeoff routine from before PR #10. Connect first, then request takeoff and use the left stick to climb. **Settings → Flight deck** retains the original default speed (0/1/2) and optional auto-calibration. Automatic calibration is off by default; when enabled it waits **1.8 seconds** before requesting takeoff. The original calibration preference key is used again. Draw Path timings and upward pulses do not apply to this screen.
+The manual Flight Deck retains its working controls from before PR #10, with the requested **3-second** auto-calibration settling wait in version **0.3.2**. Connect first, then request takeoff and use the left stick to climb. **Settings → Flight deck** retains the original default speed (0/1/2) and optional auto-calibration. Automatic calibration is off by default; when enabled it waits **3 seconds** before requesting takeoff. The original calibration preference key is used again. The one-second calibration command pulse is followed by the remainder of the three-second settling wait before takeoff. Draw Path timings and upward pulses do not apply to this screen.
+
+See the [comparison with the original app](docs/ORIGINAL_APP_AUDIT.md) for the verified core command layout and remaining feature differences, including trims, flips, phone tilt and camera mirroring. **AXIS NORM / AXIS REV** changes flight-axis direction; it is separate from camera mirroring.
 
 ### Draw Path
 

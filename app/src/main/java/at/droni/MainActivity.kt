@@ -34,10 +34,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import at.droni.ui.*
 import at.droni.net.DroneController
+import at.droni.mission.ManualTakeoff
 import at.droni.protocol.ElfieProtocol
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.min
@@ -116,14 +115,7 @@ internal fun FlightDeck(
                 val sequence = ++preflightSequence
                 preflightJob = scope.launch {
                     try {
-                        drone.neutral()
-                        drone.calibrate() // Disarmed; this request is not acknowledged.
-                        delay(1_800L)  // Calibration flag expires before takeoff request.
-                        ensureActive()
-                        if (sequence == preflightSequence &&
-                            drone.connected && !drone.takeoffRequested) {
-                            drone.takeoff()
-                        }
+                        ManualTakeoff(drone).run { sequence == preflightSequence }
                     } finally {
                         if (sequence == preflightSequence) {
                             calibrating = false
@@ -241,7 +233,7 @@ internal fun FlightDeck(
                 }
 
                 Spacer(Modifier.height(8.dp))
-                DeckStatus(drone)
+                DeckStatus(drone, calibrating)
             }
 
         }
@@ -453,10 +445,12 @@ private fun FlightConsole(
                 onClick = drone::calibrate, modifier = Modifier.weight(1.25f)
             )
             ConsoleOption(
-                label = if (drone.reverseDirection) "REVERSE" else "NORMAL",
+                label = if (drone.reverseDirection) "AXIS REV" else "AXIS NORM",
                 enabled = drone.connected && !drone.takeoffRequested,
                 active = drone.reverseDirection,
-                onClick = drone::toggleReverse, modifier = Modifier.weight(1.15f)
+                onClick = drone::toggleReverse, modifier = Modifier.weight(1.15f).semantics {
+                    contentDescription = if (drone.reverseDirection) "Flight axis reversal on" else "Flight axis reversal off"
+                }
             )
         }
     }
@@ -514,7 +508,7 @@ private fun StickDock(
 }
 
 @Composable
-private fun DeckStatus(drone: DroneController) {
+private fun DeckStatus(drone: DroneController, calibrating: Boolean) {
     val corner = RoundedCornerShape(9.dp)
     Row(
         modifier = Modifier
@@ -525,7 +519,8 @@ private fun DeckStatus(drone: DroneController) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(drone.linkStatus, modifier = Modifier.weight(1f),
+        Text(if (calibrating) "Calibrating · takeoff request after 3 seconds" else drone.linkStatus,
+            modifier = Modifier.weight(1f),
             fontSize = 10.sp, color = Warning,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text("UDP 8080  ·  25 ms", fontSize = 9.sp,
