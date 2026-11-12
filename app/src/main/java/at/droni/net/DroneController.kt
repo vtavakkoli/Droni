@@ -16,6 +16,7 @@ import at.droni.protocol.ElfieProtocol
 import at.droni.protocol.FlightInputState
 import at.droni.protocol.DroneFeedback
 import at.droni.mission.PathFlightControl
+import at.droni.mission.ManualFlightControl
 import at.droni.video.ElfieVideo
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -36,7 +37,7 @@ import java.util.concurrent.atomic.AtomicLong
  * UDP local send success does NOT imply a radio/drone acknowledgement.
  * Written by Dr. Vahid Tavakkoli.
  */
-class DroneController(private val context: Context) : PathFlightControl {
+class DroneController(private val context: Context) : PathFlightControl, ManualFlightControl {
     private companion object { const val DEFAULT_SPEED_MODE = 1 }
 
     @Volatile private var defaultSpeedMode = DEFAULT_SPEED_MODE

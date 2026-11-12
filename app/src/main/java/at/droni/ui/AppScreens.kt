@@ -157,7 +157,7 @@ fun SettingsScreen(host: String, connected: Boolean, showGrid: Boolean,
                 AppCard {
                     SectionHeading(DroniSymbol.Flight, "Flight deck", "Original manual controls")
                     SpeedPreference("Default drone speed", "Flight deck", defaultSpeed, onDefaultSpeedChange)
-                    PreferenceToggle("Auto-calibrate before takeoff", "Optional: calibrate, wait 1.8 seconds, then request takeoff. Off by default.",
+                    PreferenceToggle("Auto-calibrate before takeoff", "Optional: calibrate, wait 3 seconds, then request takeoff. Off by default.",
                         autoCalibration, onAutoCalibrationChange)
                     Text("Connect manually before Take Off. Use the left stick to climb.",
                         color = DroniColors.Muted, style = MaterialTheme.typography.bodySmall)

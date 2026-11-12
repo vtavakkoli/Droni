@@ -63,4 +63,22 @@ class ElfieProtocolTest {
         assertEquals(neutral[4], packet[4])
         assertEquals(neutral[5], packet[5])
     }
+
+    @Test fun originalAppPacketFormatterReferenceVectors() {
+        // Source-derived from ControlActivity.SendThread in the supplied original app;
+        // these are packet formatter fixtures, not captured flight acknowledgements.
+        val speedOne = ElfieProtocol.Input(speedMode = 1)
+        val fixtures = listOf(
+            speedOne to "ff087e3f403f901010010a",
+            speedOne.copy(calibrate = true) to "ff087e3f403fd0101001ca",
+            speedOne.copy(takeoff = true) to "ff087e3f403f90101041ca",
+            speedOne.copy(land = true) to "ff087e3f403f901010818a",
+            speedOne.copy(emergencyStop = true) to "ff087e3f403f90101021ea",
+            speedOne.copy(headless = true) to "ff087e3f403f90101011fa",
+            speedOne.copy(reverseDirection = true) to "ff087e4040409010100108",
+            speedOne.copy(speedMode = 2, trimYaw = 12, trimPitch = 20, trimRoll = 8) to "ff087e3f403f8c0c080219",
+            speedOne.copy(throttle = .5f, yaw = -.5f, pitch = .5f, roll = .5f) to "ff08be1f205f90101001ea"
+        )
+        for ((input, expected) in fixtures) assertEquals(input.toString(), expected, ElfieProtocol.encode(input).hex())
+    }
 }
