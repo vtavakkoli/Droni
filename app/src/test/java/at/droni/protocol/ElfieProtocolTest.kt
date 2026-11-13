@@ -13,8 +13,16 @@ class ElfieProtocolTest {
     }
 
     @Test fun neutralAltitudeHold() {
-        assertEquals("ff087e3f403f901010000b",
+        assertEquals("ff087f3f403f901010000a",
             ElfieProtocol.encode(ElfieProtocol.Input()).hex())
+    }
+
+    @Test fun originalCenteredHoldIs127Not126() {
+        val hold = ElfieProtocol.encode(ElfieProtocol.Input(altitudeHold = true, throttle = 0f))
+        assertEquals(0x7f, hold[2].toInt() and 0xff)
+        assertEquals(0xff, hold.drop(1).sumOf { it.toInt() and 0xff } and 0xff)
+        assertEquals(0xfe, ElfieProtocol.encode(ElfieProtocol.Input(throttle = 1f))[2].toInt() and 0xff)
+        assertEquals(0x00, ElfieProtocol.encode(ElfieProtocol.Input(altitudeHold = false))[2].toInt() and 0xff)
     }
 
     @Test fun actionsAndChecksum() {
@@ -69,14 +77,14 @@ class ElfieProtocolTest {
         // these are packet formatter fixtures, not captured flight acknowledgements.
         val speedOne = ElfieProtocol.Input(speedMode = 1)
         val fixtures = listOf(
-            speedOne to "ff087e3f403f901010010a",
-            speedOne.copy(calibrate = true) to "ff087e3f403fd0101001ca",
-            speedOne.copy(takeoff = true) to "ff087e3f403f90101041ca",
-            speedOne.copy(land = true) to "ff087e3f403f901010818a",
-            speedOne.copy(emergencyStop = true) to "ff087e3f403f90101021ea",
-            speedOne.copy(headless = true) to "ff087e3f403f90101011fa",
-            speedOne.copy(reverseDirection = true) to "ff087e4040409010100108",
-            speedOne.copy(speedMode = 2, trimYaw = 12, trimPitch = 20, trimRoll = 8) to "ff087e3f403f8c0c080219",
+            speedOne to "ff087f3f403f9010100109",
+            speedOne.copy(calibrate = true) to "ff087f3f403fd0101001c9",
+            speedOne.copy(takeoff = true) to "ff087f3f403f90101041c9",
+            speedOne.copy(land = true) to "ff087f3f403f9010108189",
+            speedOne.copy(emergencyStop = true) to "ff087f3f403f90101021e9",
+            speedOne.copy(headless = true) to "ff087f3f403f90101011f9",
+            speedOne.copy(reverseDirection = true) to "ff087f4040409010100107",
+            speedOne.copy(speedMode = 2, trimYaw = 12, trimPitch = 20, trimRoll = 8) to "ff087f3f403f8c0c080218",
             speedOne.copy(throttle = .5f, yaw = -.5f, pitch = .5f, roll = .5f) to "ff08be1f205f90101001ea"
         )
         for ((input, expected) in fixtures) assertEquals(input.toString(), expected, ElfieProtocol.encode(input).hex())
