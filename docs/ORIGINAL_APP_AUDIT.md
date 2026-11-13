@@ -12,7 +12,7 @@ The primary references are `com/vison/macrochip/activity/ControlActivity.java` (
 | Complement checksum: bytes 1 through 10 sum to `FF` modulo 256 | Same checksum; source-derived reference vectors cover flags, trims and axes |
 | Repeated control packets every 25 ms | 25 ms fixed-delay sender; Android scheduling is not a hard real-time guarantee |
 | Left stick: yaw and throttle; right stick: roll and pitch | Same axis roles and inversion in the packet formatter |
-| Altitude-hold flag: byte 6, bit 7 | Set for manual takeoff; the stick returns to neutral. This is a firmware mode request, not measured position hold |
+| Altitude-hold flag: byte 6, bit 7 | Set for manual takeoff; centered throttle is now byte 2 = 0x7F (127) as in the decompiled original sender, rather than 0x7E (126). This is a firmware mode request, not measured position hold |
 | Calibration: byte 6, bit 6, asserted for 1000 ms | Same one-second command pulse |
 | Takeoff: byte 9, bit 6, asserted for 1000 ms | Same one-second command pulse; altitude hold is selected first |
 | Landing: byte 9, bit 7, cleared by its delayed handler | Same one-second command pulse |
@@ -47,6 +47,10 @@ No takeoff request is sent before that wait completes. Cancelling, leaving the d
 | Still photo, VR view, gesture/video object tracking | Not included in the manual flight controls; MP4 recording remains available |
 
 These differences mean Droni does not yet reproduce every original-app feature. Camera mirroring and flight-axis reversal are separate operations and must not be conflated. Firmware-specific compatibility, actual calibration completion, lift and touchdown still require hardware validation; incoming packets are not verified flight acknowledgements.
+
+## 13 November 2026 packet correction
+
+A fresh review of the supplied `classes.dex_Decompiler.com(3).zip` source (`ControlActivity$SendThread.run`, original source line 1032) identified a centered-throttle special case: **when the altitude/atmospheric mode is active and the original left rocker reports exactly 63, the original sender emits byte 2 = 0x7F (127)**. Earlier Droni fixtures incorrectly applied the generic doubling rule and emitted 0x7E (126). Updated the encoder and source-derived fixtures. This is a verified static packet-format mismatch, **not a demonstrated cause of insufficient lift**. The original app also allows atmospheric mode to be toggled; Droni continues to select altitude hold on manual takeoff. Speed mode is a separate byte-9 flag and does not substitute for throttle. Do not add automatic high-throttle post-takeoff pulses without hardware telemetry or supervised bench validation.
 
 ## Checks
 
