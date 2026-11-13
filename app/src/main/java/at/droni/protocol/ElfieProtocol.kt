@@ -48,8 +48,12 @@ object ElfieProtocol {
         require(input.trimYaw in 0..32 && input.trimPitch in 0..32 && input.trimRoll in 0..32)
         require(!(input.takeoff && input.land)) { "Cannot take off and land together" }
 
-        val b2 = (if (input.altitudeHold) stick(input.throttle) else
-            (127f * clamp(input.throttle, 0f, 1f)).roundToInt()) * 2 and 0xff
+        // Decompiled ControlActivity.SendThread: the original firmware sender uses
+        // 0x7F (127), not 0x7E (126), for a centered altitude-hold stick.
+        // Non-neutral altitude commands retain the original 2 * stick encoding.
+        val b2 = if (input.altitudeHold && clamp(input.throttle, -1f, 1f) == 0f) 0x7f
+            else (if (input.altitudeHold) stick(input.throttle) else
+                (127f * clamp(input.throttle, 0f, 1f)).roundToInt()) * 2 and 0xff
         val leftX = stick(input.yaw)
         val rightY = stick(input.pitch)
         val rightX = stick(input.roll)
